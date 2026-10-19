@@ -1,0 +1,10 @@
+{
+  "medium_contains": "FTTC",
+  "patched": true,
+  "noisy": false,
+  "access": "ethernet",
+  "sync_down_kbps": 42792,
+  "sync_up_kbps": 15587,
+  "vdsl_profile": "17a",
+  "interleave_depth": 0
+}

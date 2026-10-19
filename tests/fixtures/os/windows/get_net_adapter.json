@@ -1,0 +1,11 @@
+[
+  {
+    "Name": "Ethernet0",
+    "Mac": "00-0C-29-AB-CD-EF",
+    "Status": "Up",
+    "Speed": "1 Gbps",
+    "IPv4": "192.168.1.100",
+    "Prefix": "24",
+    "IPv6": "fe80::100"
+  }
+]

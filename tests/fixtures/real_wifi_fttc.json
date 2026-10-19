@@ -1,0 +1,1228 @@
+{
+  "timestamp": 1792241098.232964,
+  "formatted_time": "2026-10-17 14:44:58",
+  "quick_scan": false,
+  "system": {
+    "os": "Darwin",
+    "os_release": "27.0.0",
+    "os_version": "Darwin Kernel Version 27.0.0: Tue Aug 11 21:02:16 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T8112",
+    "machine": "arm64",
+    "processor": "arm",
+    "hostname": "MacBook-Air.local",
+    "python_version": "3.15.0",
+    "is_root": false
+  },
+  "lan": {
+    "primary_interface_name": "en0",
+    "primary_interface": {
+      "name": "en0",
+      "is_up": true,
+      "is_running": true,
+      "is_loopback": false,
+      "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST",
+      "mtu": 1500,
+      "mac": "02:00:00:00:00:00",
+      "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+      "ipv4": "192.168.1.95",
+      "netmask": "255.255.255.0 (/24)",
+      "broadcast": "192.168.1.255",
+      "ipv6_list": [
+        {
+          "address": "fe80::14fd:262:424f:aa74",
+          "prefix": 64,
+          "type": "Link-Local"
+        }
+      ],
+      "media": "autoselect",
+      "status": "active",
+      "type": "Wi-Fi"
+    },
+    "all_interfaces": {
+      "lo0": {
+        "name": "lo0",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": true,
+        "flags": "UP,LOOPBACK,RUNNING,MULTICAST",
+        "mtu": 16384,
+        "mac": null,
+        "vendor": "Sconosciuto",
+        "ipv4": "127.0.0.1",
+        "netmask": "255.0.0.0 (/8)",
+        "broadcast": null,
+        "ipv6_list": [
+          {
+            "address": "::1",
+            "prefix": 128,
+            "type": "Global Unicast"
+          },
+          {
+            "address": "fe80::1",
+            "prefix": 64,
+            "type": "Link-Local"
+          }
+        ],
+        "media": null,
+        "status": null,
+        "type": "Loopback"
+      },
+      "gif0": {
+        "name": "gif0",
+        "is_up": false,
+        "is_running": false,
+        "is_loopback": false,
+        "flags": "POINTOPOINT,MULTICAST",
+        "mtu": 1280,
+        "mac": null,
+        "vendor": "Sconosciuto",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [],
+        "media": null,
+        "status": null,
+        "type": "Adattatore di Rete"
+      },
+      "stf0": {
+        "name": "stf0",
+        "is_up": false,
+        "is_running": false,
+        "is_loopback": false,
+        "flags": "",
+        "mtu": null,
+        "mac": null,
+        "vendor": "Sconosciuto",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [],
+        "media": null,
+        "status": null,
+        "type": "Adattatore di Rete"
+      },
+      "anpi1": {
+        "name": "anpi1",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST",
+        "mtu": 1500,
+        "mac": "02:00:00:00:00:00",
+        "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [],
+        "media": "none",
+        "status": "inactive",
+        "type": "Adattatore di Rete"
+      },
+      "anpi0": {
+        "name": "anpi0",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST",
+        "mtu": 1500,
+        "mac": "02:00:00:00:00:00",
+        "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [],
+        "media": "none",
+        "status": "inactive",
+        "type": "Adattatore di Rete"
+      },
+      "en3": {
+        "name": "en3",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST",
+        "mtu": 1500,
+        "mac": "02:00:00:00:00:00",
+        "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [],
+        "media": "none",
+        "status": "inactive",
+        "type": "Ethernet"
+      },
+      "en4": {
+        "name": "en4",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST",
+        "mtu": 1500,
+        "mac": "02:00:00:00:00:00",
+        "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [],
+        "media": "none",
+        "status": "inactive",
+        "type": "Ethernet"
+      },
+      "en1": {
+        "name": "en1",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,BROADCAST,SMART,RUNNING,PROMISC,SIMPLEX,MULTICAST",
+        "mtu": 1500,
+        "mac": "02:00:00:00:00:00",
+        "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [],
+        "media": "autoselect <full-duplex>",
+        "status": "inactive",
+        "type": "Thunderbolt"
+      },
+      "en2": {
+        "name": "en2",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,BROADCAST,SMART,RUNNING,PROMISC,SIMPLEX,MULTICAST",
+        "mtu": 1500,
+        "mac": "02:00:00:00:00:00",
+        "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [],
+        "media": "autoselect <full-duplex>",
+        "status": "inactive",
+        "type": "Thunderbolt"
+      },
+      "bridge0": {
+        "name": "bridge0",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST",
+        "mtu": 1500,
+        "mac": "02:00:00:00:00:00",
+        "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [],
+        "media": "<unknown type>",
+        "status": "inactive",
+        "type": "Bridge"
+      },
+      "ap1": {
+        "name": "ap1",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST",
+        "mtu": 1500,
+        "mac": "02:00:00:00:00:00",
+        "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [],
+        "media": "autoselect (none)",
+        "status": "inactive",
+        "type": "Adattatore di Rete"
+      },
+      "en0": {
+        "name": "en0",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST",
+        "mtu": 1500,
+        "mac": "02:00:00:00:00:00",
+        "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+        "ipv4": "192.168.1.95",
+        "netmask": "255.255.255.0 (/24)",
+        "broadcast": "192.168.1.255",
+        "ipv6_list": [
+          {
+            "address": "fe80::14fd:262:424f:aa74",
+            "prefix": 64,
+            "type": "Link-Local"
+          }
+        ],
+        "media": "autoselect",
+        "status": "active",
+        "type": "Wi-Fi"
+      },
+      "awdl0": {
+        "name": "awdl0",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST",
+        "mtu": 1500,
+        "mac": "02:00:00:00:00:00",
+        "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [
+          {
+            "address": "fe80::3c55:cfff:feaf:6fa7",
+            "prefix": 64,
+            "type": "Link-Local"
+          }
+        ],
+        "media": "autoselect",
+        "status": "active",
+        "type": "Adattatore di Rete"
+      },
+      "utun0": {
+        "name": "utun0",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,POINTOPOINT,RUNNING,MULTICAST",
+        "mtu": 1380,
+        "mac": null,
+        "vendor": "Sconosciuto",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [
+          {
+            "address": "fe80::4848:b282:3404:1d5e",
+            "prefix": 64,
+            "type": "Link-Local"
+          }
+        ],
+        "media": null,
+        "status": null,
+        "type": "VPN / Tunnel"
+      },
+      "llw0": {
+        "name": "llw0",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST",
+        "mtu": 1500,
+        "mac": "02:00:00:00:00:00",
+        "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [
+          {
+            "address": "fe80::3c55:cfff:feaf:6fa7",
+            "prefix": 64,
+            "type": "Link-Local"
+          }
+        ],
+        "media": "autoselect (none)",
+        "status": null,
+        "type": "Adattatore di Rete"
+      },
+      "utun1": {
+        "name": "utun1",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,POINTOPOINT,RUNNING,MULTICAST",
+        "mtu": 1500,
+        "mac": null,
+        "vendor": "Sconosciuto",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [
+          {
+            "address": "fe80::b39a:c8af:5490:3db9",
+            "prefix": 64,
+            "type": "Link-Local"
+          }
+        ],
+        "media": null,
+        "status": null,
+        "type": "VPN / Tunnel"
+      },
+      "utun2": {
+        "name": "utun2",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,POINTOPOINT,RUNNING,MULTICAST",
+        "mtu": 2000,
+        "mac": null,
+        "vendor": "Sconosciuto",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [
+          {
+            "address": "fe80::9067:9397:9023:2bcc",
+            "prefix": 64,
+            "type": "Link-Local"
+          }
+        ],
+        "media": null,
+        "status": null,
+        "type": "VPN / Tunnel"
+      },
+      "utun3": {
+        "name": "utun3",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,POINTOPOINT,RUNNING,MULTICAST",
+        "mtu": 1000,
+        "mac": null,
+        "vendor": "Sconosciuto",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [
+          {
+            "address": "fe80::ce81:b1c:bd2c:69e",
+            "prefix": 64,
+            "type": "Link-Local"
+          }
+        ],
+        "media": null,
+        "status": null,
+        "type": "VPN / Tunnel"
+      },
+      "nan0": {
+        "name": "nan0",
+        "is_up": false,
+        "is_running": false,
+        "is_loopback": false,
+        "flags": "BROADCAST,SMART,SIMPLEX,MULTICAST",
+        "mtu": 1500,
+        "mac": "02:00:00:00:00:00",
+        "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [
+          {
+            "address": "fe80::8cb2:8fff:fe4b:d2c1",
+            "prefix": 64,
+            "type": "Link-Local"
+          }
+        ],
+        "media": "autoselect (none)",
+        "status": "inactive",
+        "type": "Adattatore di Rete"
+      },
+      "utun4": {
+        "name": "utun4",
+        "is_up": true,
+        "is_running": true,
+        "is_loopback": false,
+        "flags": "UP,POINTOPOINT,RUNNING,MULTICAST",
+        "mtu": 1380,
+        "mac": null,
+        "vendor": "Sconosciuto",
+        "ipv4": null,
+        "netmask": null,
+        "broadcast": null,
+        "ipv6_list": [
+          {
+            "address": "fe80::d3f3:3f3b:92ad:aa3",
+            "prefix": 64,
+            "type": "Link-Local"
+          }
+        ],
+        "media": null,
+        "status": null,
+        "type": "VPN / Tunnel"
+      }
+    },
+    "gateway": {
+      "ipv4": "192.168.1.1",
+      "interface": "en0",
+      "mac": null,
+      "vendor": "ZTE",
+      "flags": "<UP,GATEWAY,DONE,STATIC,PRCLONING,GLOBAL>",
+      "mtu": null,
+      "model": "H388X",
+      "identified_by": [
+        "HTTP"
+      ],
+      "http_server": "ZTE web server 1.0 ZTE corp 2015."
+    },
+    "wifi": {
+      "supported": true,
+      "connected": true,
+      "interface": "en0",
+      "ssid": null,
+      "bssid": null,
+      "bssid_vendor": "Produttore non catalogato",
+      "rssi_dbm": -45,
+      "noise_dbm": -89,
+      "snr_db": 44,
+      "signal_quality_pct": 100,
+      "channel": "52 (80 MHz)",
+      "frequency_ghz": "5 GHz",
+      "wifi_generation": "Wi-Fi 6 / 6E (802.11ax)",
+      "phy_mode": "802.11ax",
+      "tx_rate_mbps": 1200.0,
+      "mcs_index": 11,
+      "security": "WPA2 PSK",
+      "ssid_hidden_by_os": true
+    },
+    "ethernet": {
+      "active": false,
+      "interface": "en0",
+      "speed_mbps": null,
+      "duplex": null,
+      "media_description": null,
+      "cable_connected": false,
+      "switch_info": null
+    },
+    "dhcp": {
+      "server_ip": "192.168.1.1",
+      "lease_time_seconds": 86400,
+      "lease_time_human": "1.0 giorni (86400s)",
+      "renewal_time_seconds": null,
+      "rebinding_time_seconds": null,
+      "tftp_server": null,
+      "bootfile": null,
+      "domain_search": "homenet.telecomitalia.it"
+    },
+    "dns": {
+      "resolvers": [
+        "192.168.1.11",
+        "192.168.1.1"
+      ],
+      "search_domains": [
+        "homenet.telecomitalia.it"
+      ],
+      "scoped_resolvers": [
+        "192.168.1.11",
+        "192.168.1.1"
+      ]
+    },
+    "dns_benchmark": {
+      "system_resolver_latency_ms": 4.7,
+      "tested_servers": [
+        {
+          "name": "DNS di Sistema Locale",
+          "ip": "192.168.1.11",
+          "avg_ms": 4.7
+        }
+      ],
+      "dnssec_validation_active": false,
+      "fastest_resolver": null
+    },
+    "arp_table": [
+      {
+        "ip": "192.168.1.1",
+        "mac": "Non in cache ARP",
+        "vendor": "Host attivo rilevato",
+        "hostname": null,
+        "source": "Sweep TCP"
+      },
+      {
+        "ip": "192.168.1.111",
+        "mac": "Non in cache ARP",
+        "vendor": "Host attivo rilevato",
+        "hostname": null,
+        "source": "Sweep TCP"
+      }
+    ],
+    "devices_discovered_count": 2
+  },
+  "wan": {
+    "public_ipv4": "82.91.100.1",
+    "public_ipv6": null,
+    "dual_stack_enabled": false,
+    "reverse_dns": "host-82-91-100-1.business.telecomitalia.it",
+    "asn": "AS3269",
+    "isp": "Telecom Italia S.p.A.",
+    "org": "AS3269 Telecom Italia S.p.A.",
+    "city": "Toscana",
+    "region": "Tuscany",
+    "country": "IT",
+    "country_code": "IT",
+    "postal": "55049",
+    "coordinates": {
+      "latitude": 43.7228,
+      "longitude": 10.4017
+    },
+    "timezone": "Europe/Rome",
+    "nat": {
+      "mapped_external_ip": "82.91.100.1",
+      "mapped_external_port": 62090,
+      "nat_type": "Full-Cone / Restricted-Cone NAT (Friendly NAT)",
+      "mapping_behavior": "Endpoint-Independent Mapping (EIM)",
+      "double_nat_detected": false,
+      "cgnat_detected": false,
+      "details": "La porta esterna (62090) viene preservata su destinazioni diverse. Ottimo per P2P e Gaming."
+    },
+    "router_services": {
+      "upnp_igd_available": false,
+      "upnp_server": null,
+      "nat_pmp_available": false
+    },
+    "privacy_and_routing": {
+      "is_vpn_or_proxy": false,
+      "confidence": "Bassa",
+      "type": "Connessione Residenziale / Diretta",
+      "indicators": [
+        "Indirizzo IP compatibile con operatore di rete fissa o mobile residenziale."
+      ]
+    }
+  },
+  "ixp": {
+    "detected_ixp": "Milano (Hub Caldera / MIX) - Interconnessione PNI",
+    "ixp_city": "Milano",
+    "ixp_facility": "Campus Caldera, Via Caldera 21",
+    "peering_type": "Direct PNI (Private Network Interconnect)",
+    "detection_method": "Topologia BGP & Analisi Latenza di Transito AS",
+    "confidence": "90%",
+    "matched_hop_ip": "188.114.100.35",
+    "matched_subnet": null,
+    "rtt_to_ixp_ms": 13.041,
+    "traceroute_hops": [
+      {
+        "hop": 1,
+        "ip": "192.168.1.1",
+        "rtt_ms": 4.141,
+        "rdns": null
+      },
+      {
+        "hop": 2,
+        "ip": "*",
+        "rtt_ms": null,
+        "rdns": null
+      },
+      {
+        "hop": 3,
+        "ip": "172.18.34.128",
+        "rtt_ms": 9.684,
+        "rdns": null
+      },
+      {
+        "hop": 4,
+        "ip": "172.18.33.230",
+        "rtt_ms": 13.047,
+        "rdns": null
+      },
+      {
+        "hop": 5,
+        "ip": "172.19.184.92",
+        "rtt_ms": 12.611,
+        "rdns": null
+      },
+      {
+        "hop": 6,
+        "ip": "172.19.177.60",
+        "rtt_ms": 12.695,
+        "rdns": null
+      },
+      {
+        "hop": 7,
+        "ip": "195.22.205.116",
+        "rtt_ms": 12.48,
+        "rdns": null
+      },
+      {
+        "hop": 8,
+        "ip": "195.22.196.71",
+        "rtt_ms": 12.808,
+        "rdns": null
+      },
+      {
+        "hop": 9,
+        "ip": "*",
+        "rtt_ms": null,
+        "rdns": null
+      },
+      {
+        "hop": 10,
+        "ip": "188.114.100.35",
+        "rtt_ms": 21.878,
+        "rdns": null
+      },
+      {
+        "hop": 11,
+        "ip": "1.1.1.1",
+        "rtt_ms": 13.041,
+        "rdns": "one.one.one.one"
+      }
+    ],
+    "hop2_bng": {
+      "ip": "195.22.205.116",
+      "min_ms": 12.21,
+      "median_ms": 13.7,
+      "avg_ms": 13.71,
+      "p95_ms": 15.05,
+      "jitter_ms": 0.92,
+      "tail_variance_ms": 1.35,
+      "samples_count": 30,
+      "packet_loss_pct": 0.0,
+      "is_responsive": true,
+      "cgnat_hop": false,
+      "skipped_hops": [
+        "172.18.34.128",
+        "172.18.33.230",
+        "172.19.184.92",
+        "172.19.177.60"
+      ]
+    },
+    "path_mtu": 1492,
+    "hop2_skipped_hops": [
+      "172.18.34.128",
+      "172.18.33.230",
+      "172.19.184.92",
+      "172.19.177.60"
+    ],
+    "peeringdb_facilities": [],
+    "analysis_notes": [
+      "Traffico instradato tramite PNI (Private Network Interconnect): interconnessione diretta in fibra punto-punto tra l'Autonomous System dell'operatore e il fornitore edge."
+    ]
+  },
+  "performance": {
+    "latency_targets": {
+      "Gateway Locale": {
+        "name": "Gateway Locale",
+        "host": "192.168.1.1",
+        "type": "lan",
+        "reachable": true,
+        "min_ms": 3.1,
+        "avg_ms": 3.97,
+        "median_ms": 3.9,
+        "max_ms": 4.77,
+        "jitter_ms": 0.61,
+        "packet_loss_pct": 0.0,
+        "samples_count": 6
+      },
+      "Cloudflare DNS": {
+        "name": "Cloudflare DNS",
+        "host": "1.1.1.1",
+        "type": "anycast",
+        "reachable": true,
+        "min_ms": 13.3,
+        "avg_ms": 14.2,
+        "median_ms": 14.05,
+        "max_ms": 16.15,
+        "jitter_ms": 1.35,
+        "packet_loss_pct": 0.0,
+        "samples_count": 6
+      },
+      "Google DNS": {
+        "name": "Google DNS",
+        "host": "8.8.8.8",
+        "type": "anycast",
+        "reachable": true,
+        "min_ms": 12.78,
+        "avg_ms": 14.11,
+        "median_ms": 13.73,
+        "max_ms": 15.65,
+        "jitter_ms": 1.29,
+        "packet_loss_pct": 0.0,
+        "samples_count": 6
+      },
+      "Quad9 Secure": {
+        "name": "Quad9 Secure",
+        "host": "9.9.9.9",
+        "type": "anycast",
+        "reachable": true,
+        "min_ms": 21.05,
+        "avg_ms": 22.26,
+        "median_ms": 22.15,
+        "max_ms": 24.2,
+        "jitter_ms": 1.39,
+        "packet_loss_pct": 0.0,
+        "samples_count": 6
+      }
+    },
+    "primary_latency": {
+      "name": "Cloudflare DNS",
+      "host": "1.1.1.1",
+      "type": "anycast",
+      "reachable": true,
+      "min_ms": 13.3,
+      "avg_ms": 14.2,
+      "median_ms": 14.05,
+      "max_ms": 16.15,
+      "jitter_ms": 1.35,
+      "packet_loss_pct": 0.0,
+      "samples_count": 6
+    },
+    "gateway_latency": {
+      "name": "Gateway Locale",
+      "host": "192.168.1.1",
+      "type": "lan",
+      "reachable": true,
+      "min_ms": 3.1,
+      "avg_ms": 3.97,
+      "median_ms": 3.9,
+      "max_ms": 4.77,
+      "jitter_ms": 0.61,
+      "packet_loss_pct": 0.0,
+      "samples_count": 6
+    },
+    "bufferbloat": {
+      "idle_latency_ms": 14.05,
+      "download_loaded_ms": 43.8,
+      "download_delta_ms": 29.75,
+      "upload_loaded_ms": 52.14,
+      "upload_delta_ms": 38.09,
+      "max_delta_ms": 38.09,
+      "grade": "C",
+      "description": "Moderato: Coda evidente; possibili micro-scatti durante gaming o streaming intensi (DL: +29.75ms, UL: +38.09ms)."
+    },
+    "speed": {
+      "download_mbps": 39.66,
+      "download_peak_mbps": 39.98,
+      "download_stability_pct": 99.3,
+      "bytes_downloaded": 39780352,
+      "download_duration_s": 8.16,
+      "upload_mbps": 14.4,
+      "upload_peak_mbps": 14.82,
+      "upload_stability_pct": 97.4,
+      "bytes_uploaded": 14680064,
+      "upload_duration_s": 8.17,
+      "bytes_transferred": 54460416,
+      "test_duration_s": 16.33,
+      "download_samples": [
+        [
+          0.2,
+          17.98
+        ],
+        [
+          0.41,
+          38.35
+        ],
+        [
+          0.61,
+          38.35
+        ],
+        [
+          0.82,
+          38.64
+        ],
+        [
+          1.02,
+          40.9
+        ],
+        [
+          1.23,
+          38.35
+        ],
+        [
+          1.43,
+          38.54
+        ],
+        [
+          1.63,
+          41.58
+        ],
+        [
+          1.84,
+          41.47
+        ],
+        [
+          2.04,
+          38.76
+        ],
+        [
+          2.24,
+          38.35
+        ],
+        [
+          2.45,
+          38.35
+        ],
+        [
+          2.65,
+          40.91
+        ],
+        [
+          2.86,
+          38.35
+        ],
+        [
+          3.06,
+          40.9
+        ],
+        [
+          3.27,
+          38.93
+        ],
+        [
+          3.47,
+          38.97
+        ],
+        [
+          3.67,
+          40.91
+        ],
+        [
+          3.88,
+          38.9
+        ],
+        [
+          4.08,
+          40.91
+        ],
+        [
+          4.29,
+          38.35
+        ],
+        [
+          4.49,
+          41.62
+        ],
+        [
+          4.69,
+          38.32
+        ],
+        [
+          4.89,
+          39.25
+        ],
+        [
+          5.1,
+          40.9
+        ],
+        [
+          5.3,
+          38.32
+        ],
+        [
+          5.51,
+          40.88
+        ],
+        [
+          5.71,
+          38.65
+        ],
+        [
+          5.92,
+          38.34
+        ],
+        [
+          6.12,
+          38.4
+        ],
+        [
+          6.33,
+          40.9
+        ],
+        [
+          6.53,
+          40.88
+        ],
+        [
+          6.74,
+          41.01
+        ],
+        [
+          6.94,
+          40.91
+        ],
+        [
+          7.14,
+          33.81
+        ],
+        [
+          7.34,
+          44.38
+        ],
+        [
+          7.55,
+          39.01
+        ],
+        [
+          7.75,
+          40.87
+        ],
+        [
+          7.96,
+          38.34
+        ],
+        [
+          8.16,
+          39.08
+        ]
+      ],
+      "upload_samples": [
+        [
+          0.21,
+          10.17
+        ],
+        [
+          0.41,
+          15.34
+        ],
+        [
+          0.61,
+          15.51
+        ],
+        [
+          0.82,
+          15.34
+        ],
+        [
+          1.02,
+          15.63
+        ],
+        [
+          1.23,
+          10.23
+        ],
+        [
+          1.43,
+          18.05
+        ],
+        [
+          1.63,
+          12.93
+        ],
+        [
+          1.83,
+          18.08
+        ],
+        [
+          2.04,
+          12.98
+        ],
+        [
+          2.24,
+          15.34
+        ],
+        [
+          2.45,
+          12.78
+        ],
+        [
+          2.65,
+          12.79
+        ],
+        [
+          2.86,
+          15.34
+        ],
+        [
+          3.06,
+          15.57
+        ],
+        [
+          3.26,
+          15.34
+        ],
+        [
+          3.47,
+          10.38
+        ],
+        [
+          3.67,
+          17.9
+        ],
+        [
+          3.88,
+          10.23
+        ],
+        [
+          4.08,
+          17.9
+        ],
+        [
+          4.29,
+          15.34
+        ],
+        [
+          4.49,
+          12.78
+        ],
+        [
+          4.7,
+          12.78
+        ],
+        [
+          4.9,
+          15.34
+        ],
+        [
+          5.11,
+          15.34
+        ],
+        [
+          5.31,
+          15.34
+        ],
+        [
+          5.52,
+          15.34
+        ],
+        [
+          5.72,
+          12.78
+        ],
+        [
+          5.93,
+          12.78
+        ],
+        [
+          6.13,
+          17.89
+        ],
+        [
+          6.34,
+          12.78
+        ],
+        [
+          6.54,
+          18.1
+        ],
+        [
+          6.74,
+          12.88
+        ],
+        [
+          6.95,
+          15.34
+        ],
+        [
+          7.15,
+          7.67
+        ],
+        [
+          7.36,
+          17.9
+        ],
+        [
+          7.56,
+          12.78
+        ],
+        [
+          7.77,
+          15.6
+        ],
+        [
+          7.97,
+          13.02
+        ],
+        [
+          8.17,
+          15.34
+        ]
+      ]
+    }
+  },
+  "estimations": {
+    "physical_medium": {
+      "predicted_medium": "FTTC / VDSL2 (Fibra Misto Rame)",
+      "confidence_pct": 67.3,
+      "insufficient_data": false,
+      "alternatives": [
+        {
+          "medium": "FTTH (Fibra Ottica Pura GPON / XGS-PON)",
+          "score": 18.0,
+          "confidence_share_pct": 5.5
+        }
+      ],
+      "bng_hop": {
+        "ip": "195.22.205.116",
+        "min_ms": 12.21,
+        "median_ms": 13.7,
+        "jitter_ms": 0.92,
+        "tail_variance_ms": 1.35,
+        "is_responsive": true,
+        "cgnat_hop": false
+      },
+      "scores_breakdown": {
+        "FTTH (Fibra Ottica Pura GPON / XGS-PON)": 18.0,
+        "FTTC / VDSL2 (Fibra Misto Rame)": 68.0,
+        "Mobile Cellular (4G LTE / 5G Mobile Hotspot)": 0.0,
+        "FWA (Fixed Wireless Access / Eolo / Linkem)": 0.0,
+        "DOCSIS (Cavo Coassiale HFC)": 0.0,
+        "Satellite LEO (Starlink Bassa Orbita)": 0.0,
+        "Satellite GEO (Geostazionario Tradizionale)": 0.0
+      },
+      "rationale": [
+        "Latenza BNG di 12.21 ms con jitter ultra-stabile (0.92 ms) e upload entro 35 Mbps: firma classica del ritardo di framing/interleaving VDSL2 su rame.",
+        "Path MTU 1492 (misurato con DF): incapsulamento PPPoE (-8 byte), comune su FTTC/ADSL e alcune FTTH; indizio debole."
+      ],
+      "evidence": [
+        {
+          "reason": "Latenza BNG di 12.21 ms con jitter ultra-stabile (0.92 ms) e upload entro 35 Mbps: firma classica del ritardo di framing/interleaving VDSL2 su rame.",
+          "contributions": {
+            "FTTC / VDSL2 (Fibra Misto Rame)": 60.0,
+            "FTTH (Fibra Ottica Pura GPON / XGS-PON)": 15.0
+          }
+        },
+        {
+          "reason": "Path MTU 1492 (misurato con DF): incapsulamento PPPoE (-8 byte), comune su FTTC/ADSL e alcune FTTH; indizio debole.",
+          "contributions": {
+            "FTTH (Fibra Ottica Pura GPON / XGS-PON)": 3.0,
+            "FTTC / VDSL2 (Fibra Misto Rame)": 8.0
+          }
+        }
+      ]
+    },
+    "optical_routing": {
+      "nearest_ixp_name": "Milano (Hub Caldera / MIX) - Interconnessione PNI",
+      "ixp_facility": "Campus Caldera, Via Caldera 21",
+      "ixp_city": "Milano",
+      "peering_type": "Direct PNI (Private Network Interconnect)",
+      "straight_line_distance_km": 199.4,
+      "estimated_fiber_path_km": 269.2,
+      "theoretical_optical_min_rtt_ms": 1.96,
+      "measured_rtt_ms": 13.04,
+      "routing_efficiency_pct": 100.0,
+      "applicable": true,
+      "not_applicable_reason": null,
+      "switching_and_queuing_delay_ms": 0.0,
+      "detour_rating": "Eccellente (Instradamento Diretto)"
+    },
+    "bandwidth_delay_product": {
+      "bdp_bytes": 69652,
+      "bdp_kb": 68.0,
+      "bdp_mb": 0.07,
+      "recommended_tcp_window_kb": 102,
+      "pipe_capacity_description": "Capacità del canale in transito: 68.0 KB di pacchetti simultanei senza perdita di throughput."
+    },
+    "voice_quality_mos": {
+      "mos_score": 4.4,
+      "r_factor": 93.0,
+      "quality_rating": "Eccellente (Broadcast / Studio Quality)",
+      "effective_delay_ms": 9.7
+    },
+    "application_suitability": {
+      "competitive_gaming": {
+        "status": "OTTIMO",
+        "score": 85,
+        "badge": "success",
+        "desc": "Ottima reattività per tornei e multiplayer competitivo."
+      },
+      "video_streaming": {
+        "status": "MOLTO BUONO",
+        "score": 85,
+        "badge": "success",
+        "desc": "Supporta perfettamente streaming 4K UHD su 1-2 dispositivi."
+      },
+      "video_conferencing": {
+        "status": "IMPECCABILE",
+        "score": 96,
+        "badge": "success",
+        "desc": "Voce cristallina e video HD senza glitch o desincronizzazioni."
+      },
+      "cloud_gaming": {
+        "status": "BUONO",
+        "score": 78,
+        "badge": "warning",
+        "desc": "Cloud gaming fruibile a 60 FPS con leggero ritardo."
+      }
+    }
+  }
+}

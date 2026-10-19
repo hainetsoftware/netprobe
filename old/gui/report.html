@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NetProbe Pro - LAN & Internet Intelligence Dashboard</title>
+  <style>
+/* NetProbe Pro - Fluent / Windows 11 style, SOLO scala di grigi (chiaro/scuro automatico) */
+:root {
+  --bg: #f3f3f3;
+  --bg-layer: #fbfbfb;
+  --card: #ffffff;
+  --card-hover: #f9f9f9;
+  --stroke: #e5e5e5;
+  --stroke-strong: #d1d1d1;
+  --text: #1a1a1a;
+  --text-muted: #5d5d5d;
+  --text-dim: #7a7a7a;
+  --accent: #1f1f1f;          /* grigio scuro: azioni primarie */
+  --accent-text: #ffffff;
+  --fill-subtle: #f0f0f0;
+  --fill-strong: #e0e0e0;
+  --shadow: 0 2px 4px rgba(0,0,0,.04), 0 0 0 1px rgba(0,0,0,.02);
+  /* compatibilita' con app.js: tutti i "colori" sono grigi */
+  --accent-emerald: #2b2b2b;
+  --accent-cyan: #3a3a3a;
+  --accent-amber: #6b6b6b;
+  --accent-rose: #8a8a8a;
+  --text-main: var(--text);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #202020;
+    --bg-layer: #272727;
+    --card: #2b2b2b;
+    --card-hover: #323232;
+    --stroke: #3a3a3a;
+    --stroke-strong: #4a4a4a;
+    --text: #f2f2f2;
+    --text-muted: #c4c4c4;
+    --text-dim: #9a9a9a;
+    --accent: #f2f2f2;
+    --accent-text: #1a1a1a;
+    --fill-subtle: #333333;
+    --fill-strong: #444444;
+    --shadow: 0 2px 6px rgba(0,0,0,.35);
+    --accent-emerald: #f2f2f2;
+    --accent-cyan: #e0e0e0;
+    --accent-amber: #b5b5b5;
+    --accent-rose: #8f8f8f;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { filter: grayscale(1); color-scheme: light dark; }  /* garantisce scala di grigi anche per emoji */
+body {
+  font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "SF Pro Text", Roboto, sans-serif;
+  background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.45;
+  min-height: 100vh;
+}
+.container { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
+
+/* Header (Mica) */
+header {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--bg-layer) 88%, transparent);
+  backdrop-filter: blur(24px) saturate(1.1);
+  border-bottom: 1px solid var(--stroke);
+}
+.header-content { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 64px; flex-wrap: wrap; }
+.logo-group { display: flex; align-items: center; gap: 12px; }
+.logo-icon { width: 32px; height: 32px; border-radius: 8px; background: var(--accent); color: var(--accent-text); display: grid; place-items: center; font-size: 16px; }
+.logo-text h1 { font-size: 16px; font-weight: 600; }
+.logo-text p { font-size: 12px; color: var(--text-dim); }
+.action-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+
+button {
+  font: inherit; color: var(--text); background: var(--card);
+  border: 1px solid var(--stroke-strong); border-radius: 6px; padding: 6px 14px;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+  transition: background .12s, transform .05s;
+}
+button:hover { background: var(--fill-subtle); }
+button:active { transform: scale(.98); }
+button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.btn-primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+button.btn-primary:hover { opacity: .88; background: var(--accent); }
+
+main.container { padding-top: 20px; padding-bottom: 48px; }
+
+/* Barra di stato + progresso scansione */
+.status-bar {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--stroke); border-radius: 8px;
+  padding: 10px 16px; margin-bottom: 16px; box-shadow: var(--shadow);
+}
+.status-indicator { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+.pulse-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-dim); }
+.pulse-dot.scanning { background: var(--text); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
+
+.scan-panel { display: none; background: var(--card); border: 1px solid var(--stroke); border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.scan-panel.active { display: block; }
+.scan-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.scan-phase { font-weight: 600; }
+.scan-live { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.scan-live small { font-size: 13px; font-weight: 400; color: var(--text-dim); margin-left: 4px; }
+.progress-track { height: 4px; background: var(--fill-strong); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; width: 0; background: var(--accent); border-radius: 2px; transition: width .35s ease; }
+.scan-steps { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--text-dim); }
+.scan-steps span.on { color: var(--text); font-weight: 600; }
+.scan-steps span.done::before { content: "✓ "; }
+.scan-error { display: none; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--stroke-strong); border-left: 4px solid var(--text); border-radius: 6px; background: var(--fill-subtle); }
+.scan-error.active { display: block; }
+
+/* Metriche */
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.metric-card { background: var(--card); border: 1px solid var(--stroke); border-radius: 8px; padding: 14px 16px; box-shadow: var(--shadow); transition: background .12s; }
+.metric-card:hover { background: var(--card-hover); }
+.metric-header { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 12px; margin-bottom: 6px; }
+.metric-value { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.metric-unit { font-size: 13px; font-weight: 400; color: var(--text-dim); margin-left: 4px; }
+.metric-subtitle { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+
+/* Topologia */
+.topology-section { background: var(--card); border: 1px solid var(--stroke); border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; box-shadow: var(--shadow); }
+.section-title { font-weight: 600; margin-bottom: 14px; }
+.topology-chain { display: flex; align-items: stretch; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.topo-node { flex: 1 1 170px; text-align: center; background: var(--fill-subtle); border: 1px solid var(--stroke); border-radius: 8px; padding: 12px 10px; }
+.topo-node-icon { font-size: 22px; margin-bottom: 4px; }
+.topo-node-name { font-weight: 600; font-size: 13px; }
+.topo-node-ip { font-size: 12px; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; color: var(--text-muted); }
+.topo-node-meta { font-size: 11px; color: var(--text-dim); }
+.topo-arrow { align-self: center; color: var(--text-dim); font-size: 18px; }
+
+/* Tab (stile NavigationView orizzontale) */
+.tabs-nav { display: flex; gap: 2px; border-bottom: 1px solid var(--stroke); margin-bottom: 16px; overflow-x: auto; }
+.tab-btn { background: transparent; border: none; border-bottom: 3px solid transparent; border-radius: 6px 6px 0 0; color: var(--text-muted); padding: 10px 14px; white-space: nowrap; }
+.tab-btn:hover { background: var(--fill-subtle); }
+.tab-btn.active { color: var(--text); font-weight: 600; border-bottom-color: var(--text); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; animation: fade .18s ease; }
+@keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.cards-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; }
+.panel-card { background: var(--card); border: 1px solid var(--stroke); border-radius: 8px; padding: 16px 20px; box-shadow: var(--shadow); }
+.panel-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }
+
+/* Tabelle */
+.detail-table { width: 100%; border-collapse: collapse; }
+.detail-table tr { border-bottom: 1px solid var(--stroke); }
+.detail-table tr:last-child { border-bottom: none; }
+.detail-table td, .detail-table th { padding: 8px 4px; text-align: left; vertical-align: top; }
+.detail-table th { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+.detail-table td.label { color: var(--text-muted); width: 42%; }
+.detail-table td.value { font-weight: 500; word-break: break-word; font-variant-numeric: tabular-nums; }
+
+/* Badge: differenziati da peso/bordo, non dal colore */
+.badge { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; background: var(--fill-strong); color: var(--text); border: 1px solid var(--stroke-strong); }
+.badge-success { background: var(--fill-subtle); }
+.badge-cyan, .badge-purple { background: var(--fill-subtle); }
+.badge-warning { background: transparent; border-style: dashed; }
+.badge-danger { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+.progress-bar-bg { height: 6px; background: var(--fill-strong); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+.progress-bar-fill { height: 100%; background: var(--accent) !important; border-radius: 3px; }
+
+pre.json-view { background: var(--fill-subtle); border: 1px solid var(--stroke); border-radius: 8px; padding: 14px; overflow: auto; max-height: 560px; font: 12px/1.5 ui-monospace, "Cascadia Mono", Menlo, monospace; }
+a { color: var(--text); }
+.hint { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
+
+@media (max-width: 720px) { .cards-grid-2 { grid-template-columns: 1fr; } .topo-arrow { display: none; } }
+@media print { header, .scan-panel { display: none; } html { filter: none; } }
+
+</style>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="container header-content">
+      <div class="logo-group">
+        <div class="logo-icon">⚡</div>
+        <div class="logo-text">
+          <h1>NetProbe Pro</h1>
+          <p>LAN & Internet Intelligence Suite</p>
+        </div>
+      </div>
+      <div class="action-buttons">
+        <button id="btn-quick-scan">
+          <span>⚡</span> Scansione rapida
+        </button>
+        <button id="btn-full-scan" class="btn-primary">
+          <span>▶</span> Avvia test completo
+        </button>
+        <button id="btn-export-json">
+          <span>💾</span> Esporta JSON
+        </button>
+        <button id="btn-print" onclick="window.print()">
+          <span>🖨️</span> PDF
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Status Bar -->
+    <div class="status-bar">
+      <div class="status-indicator">
+        <div id="pulse-indicator" class="pulse-dot"></div>
+        <span id="status-text">Caricamento dati di rete in corso...</span>
+      </div>
+      <div id="system-meta" style="color: var(--text-dim);">
+        Rilevamento hardware e sistema operativo...
+      </div>
+    </div>
+
+    <!-- Progresso scansione -->
+    <div id="scan-panel" class="scan-panel">
+      <div class="scan-top">
+        <div class="scan-phase" id="scan-phase">Preparazione...</div>
+        <div class="scan-live" id="scan-live"><span id="scan-live-val">--</span><small id="scan-live-unit">Mbps</small></div>
+      </div>
+      <div class="progress-track"><div class="progress-fill" id="scan-fill"></div></div>
+      <div class="scan-steps" id="scan-steps">
+        <span data-step="lan">Rete locale</span><span data-step="wan">Internet</span><span data-step="ixp">IXP & BNG</span><span data-step="latency">Latenza</span>
+        <span data-step="download">Download</span><span data-step="upload">Upload</span><span data-step="estimation">Stime</span>
+      </div>
+      <div class="scan-error" id="scan-error"><strong>Errore:</strong> <span id="scan-error-msg"></span>
+        <div style="margin-top:8px"><button id="btn-retry">Riprova</button></div></div>
+    </div>
+
+    <!-- Quick Metrics Top Cards -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-header">
+          <span>Download Throughput</span>
+          <span>📥</span>
+        </div>
+        <div class="metric-value">
+          <span id="metric-download">--</span>
+          <span class="metric-unit">Mbps</span>
+        </div>
+        <div class="metric-subtitle" id="metric-download-sub">Test chunked su CDN</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span>Upload Stimato</span>
+          <span>📤</span>
+        </div>
+        <div class="metric-value">
+          <span id="metric-upload">--</span>
+          <span class="metric-unit">Mbps</span>
+        </div>
+        <div class="metric-subtitle" id="metric-upload-sub">Throughput verso edge</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span>Latenza Minima</span>
+          <span>⏱️</span>
+        </div>
+        <div class="metric-value">
+          <span id="metric-ping">--</span>
+          <span class="metric-unit">ms</span>
+        </div>
+        <div class="metric-subtitle" id="metric-jitter-sub">Jitter: -- ms (RFC 3550)</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span>Grado Bufferbloat</span>
+          <span>🚦</span>
+        </div>
+        <div class="metric-value">
+          <span id="metric-bufferbloat">--</span>
+        </div>
+        <div class="metric-subtitle" id="metric-bufferbloat-sub">Delta latenza sotto carico</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span>Score Vocale ITU-T G.107</span>
+          <span>📞</span>
+        </div>
+        <div class="metric-value">
+          <span id="metric-mos">--</span>
+          <span class="metric-unit">/ 4.5</span>
+        </div>
+        <div class="metric-subtitle" id="metric-mos-sub">Qualità VoIP / Stream</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-header">
+          <span>Mezzo Fisico Stimato</span>
+          <span>🔬</span>
+        </div>
+        <div class="metric-value" style="font-size: 20px;">
+          <span id="metric-medium">--</span>
+        </div>
+        <div class="metric-subtitle" id="metric-medium-sub">Confidenza modello: --%</div>
+      </div>
+    </div>
+
+    <!-- Network Topology Chain Visualizer -->
+    <div class="topology-section">
+      <div class="section-title">
+        <span>🌐 Topologia di Collegamento Rilevata</span>
+      </div>
+      <div class="topology-chain">
+        <div class="topo-node" id="node-host">
+          <div class="topo-node-icon">💻</div>
+          <div class="topo-node-name" id="topo-host-name">Host Locale</div>
+          <div class="topo-node-ip" id="topo-host-ip">0.0.0.0</div>
+          <div class="topo-node-meta" id="topo-host-meta">Interfaccia</div>
+        </div>
+
+        <div class="topo-arrow">➜</div>
+
+        <div class="topo-node" id="node-gateway">
+          <div class="topo-node-icon">📡</div>
+          <div class="topo-node-name" id="topo-gw-name">Default Gateway</div>
+          <div class="topo-node-ip" id="topo-gw-ip">0.0.0.0</div>
+          <div class="topo-node-meta" id="topo-gw-meta">Router LAN</div>
+        </div>
+
+        <div class="topo-arrow">➜</div>
+
+        <div class="topo-node" id="node-isp">
+          <div class="topo-node-icon">🏢</div>
+          <div class="topo-node-name" id="topo-isp-name">Provider ISP</div>
+          <div class="topo-node-ip" id="topo-isp-ip">IP Pubblico</div>
+          <div class="topo-node-meta" id="topo-isp-meta">ASN</div>
+        </div>
+
+        <div class="topo-arrow">➜</div>
+
+        <div class="topo-node" id="node-internet">
+          <div class="topo-node-icon">🌍</div>
+          <div class="topo-node-name" id="topo-edge-name">Hub IXP / Internet</div>
+          <div class="topo-node-ip" id="topo-edge-city">Anycast Core</div>
+          <div class="topo-node-meta" id="topo-edge-meta">Efficienza Ottica</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabbed Panels Navigation -->
+    <div class="tabs-nav">
+      <button class="tab-btn active" data-tab="tab-lan">💻 Scheda & Rete LAN</button>
+      <button class="tab-btn" data-tab="tab-wan">🌍 Internet & Geointelligence</button>
+      <button class="tab-btn" data-tab="tab-nat">🛡️ NAT, Firewall & Routing</button>
+      <button class="tab-btn" data-tab="tab-perf">🚀 Performance & Bufferbloat</button>
+      <button class="tab-btn" data-tab="tab-models">🔬 Modelli Fisici & Stime ITU-T</button>
+      <button class="tab-btn" data-tab="tab-devices">👥 Dispositivi LAN</button>
+      <button class="tab-btn" data-tab="tab-json">📋 Raw JSON</button>
+    </div>
+
+    <!-- Tab 1: LAN & Hardware -->
+    <div id="tab-lan" class="tab-panel active">
+      <div class="cards-grid-2">
+        <div class="panel-card">
+          <h3><span>🔌</span> Configurazione Interfaccia Primaria</h3>
+          <table class="detail-table">
+            <tr><td class="label">Nome Interfaccia</td><td class="value" id="lan-iface-name">--</td></tr>
+            <tr><td class="label">Tipologia</td><td class="value" id="lan-iface-type">--</td></tr>
+            <tr><td class="label">Indirizzo MAC (Fisico)</td><td class="value" id="lan-mac">--</td></tr>
+            <tr><td class="label">Produttore Scheda (OUI)</td><td class="value" id="lan-vendor">--</td></tr>
+            <tr><td class="label">Indirizzo IPv4 Locale</td><td class="value" id="lan-ipv4">--</td></tr>
+            <tr><td class="label">Maschera di Sottorete</td><td class="value" id="lan-mask">--</td></tr>
+            <tr><td class="label">Broadcast</td><td class="value" id="lan-bcast">--</td></tr>
+            <tr><td class="label">MTU Interfaccia</td><td class="value" id="lan-mtu">--</td></tr>
+            <tr><td class="label">Indirizzi IPv6</td><td class="value" id="lan-ipv6">--</td></tr>
+          </table>
+        </div>
+
+        <div class="panel-card">
+          <h3><span>📶</span> Parametri Fisici Link (Wi-Fi / Ethernet)</h3>
+          <table class="detail-table" id="table-link-params">
+            <!-- Popolato dinamicamente da app.js -->
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Internet & WAN -->
+    <div id="tab-wan" class="tab-panel">
+      <div class="cards-grid-2">
+        <div class="panel-card">
+          <h3><span>🌐</span> Identità Rete Pubblica & ISP</h3>
+          <table class="detail-table">
+            <tr><td class="label">Indirizzo IPv4 Pubblico</td><td class="value" id="wan-ipv4">--</td></tr>
+            <tr><td class="label">Indirizzo IPv6 Pubblico</td><td class="value" id="wan-ipv6">--</td></tr>
+            <tr><td class="label">Connettività Dual-Stack</td><td class="value" id="wan-dualstack">--</td></tr>
+            <tr><td class="label">Reverse DNS (PTR)</td><td class="value" id="wan-rdns">--</td></tr>
+            <tr><td class="label">Provider Internet (ISP)</td><td class="value" id="wan-isp">--</td></tr>
+            <tr><td class="label">Autonomous System (ASN)</td><td class="value" id="wan-asn">--</td></tr>
+            <tr><td class="label">Stato Privacy / VPN</td><td class="value" id="wan-vpn">--</td></tr>
+          </table>
+        </div>
+
+        <div class="panel-card">
+          <h3><span>📍</span> Geolocalizzazione IP & Fuso Orario</h3>
+          <table class="detail-table">
+            <tr><td class="label">Città</td><td class="value" id="wan-city">--</td></tr>
+            <tr><td class="label">Regione / Provincia</td><td class="value" id="wan-region">--</td></tr>
+            <tr><td class="label">Nazione</td><td class="value" id="wan-country">--</td></tr>
+            <tr><td class="label">Codice Postale (CAP)</td><td class="value" id="wan-postal">--</td></tr>
+            <tr><td class="label">Coordinate Geografiche</td><td class="value" id="wan-coords">--</td></tr>
+            <tr><td class="label">Fuso Orario</td><td class="value" id="wan-timezone">--</td></tr>
+          </table>
+        </div>
+
+        <div class="panel-card" style="grid-column: 1 / -1;">
+          <h3><span>⚡</span> Internet eXchange (IXP) & Architettura di Peering</h3>
+          <table class="detail-table">
+            <tr><td class="label">Punto di Interscambio / IXP</td><td class="value" id="wan-ixp-name">--</td></tr>
+            <tr><td class="label">Campus / Struttura Datacenter</td><td class="value" id="wan-ixp-facility">--</td></tr>
+            <tr><td class="label">Tipologia di Interconnessione</td><td class="value" id="wan-ixp-type">--</td></tr>
+            <tr><td class="label">Metodo di Riconoscimento</td><td class="value" id="wan-ixp-method">--</td></tr>
+            <tr><td class="label">Interfaccia Peering (Hop IP & Subnet)</td><td class="value" id="wan-ixp-hop">--</td></tr>
+            <tr><td class="label">Latenza verso il Punto di Interscambio</td><td class="value" id="wan-ixp-rtt">--</td></tr>
+            <tr><td class="label">Punti di Presenza AS (PeeringDB)</td><td class="value" id="wan-ixp-peeringdb">--</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: NAT & Routing -->
+    <div id="tab-nat" class="tab-panel">
+      <div class="cards-grid-2">
+        <div class="panel-card">
+          <h3><span>🛡️</span> Analisi Mappatura NAT (STUN RFC 5389)</h3>
+          <table class="detail-table">
+            <tr><td class="label">Tipologia NAT</td><td class="value" id="nat-type">--</td></tr>
+            <tr><td class="label">Comportamento Mapping</td><td class="value" id="nat-behavior">--</td></tr>
+            <tr><td class="label">Porta Esterna Mappata</td><td class="value" id="nat-port">--</td></tr>
+            <tr><td class="label">Carrier-Grade NAT (CGNAT)</td><td class="value" id="nat-cgnat">--</td></tr>
+            <tr><td class="label">UPnP IGD Router</td><td class="value" id="nat-upnp">--</td></tr>
+            <tr><td class="label">NAT-PMP Router</td><td class="value" id="nat-pmp">--</td></tr>
+            <tr><td class="label">Dettagli Diagnostici</td><td class="value" id="nat-details">--</td></tr>
+          </table>
+        </div>
+
+        <div class="panel-card">
+          <h3><span>📡</span> Gateway, DHCP & DNS</h3>
+          <table class="detail-table">
+            <tr><td class="label">Default Gateway (Router)</td><td class="value" id="gw-ip">--</td></tr>
+            <tr><td class="label">Produttore Router</td><td class="value" id="gw-vendor">--</td></tr>
+            <tr><td class="label">Modello Router</td><td class="value" id="gw-model">--</td></tr>
+            <tr><td class="label">MAC Router & Vendor</td><td class="value" id="gw-mac">--</td></tr>
+            <tr><td class="label">Server DHCP</td><td class="value" id="dhcp-server">--</td></tr>
+            <tr><td class="label">Durata Concessione DHCP</td><td class="value" id="dhcp-lease">--</td></tr>
+            <tr><td class="label">Server DNS di Sistema</td><td class="value" id="dns-resolvers">--</td></tr>
+            <tr><td class="label">Latenza Risoluzione DNS</td><td class="value" id="dns-latency">--</td></tr>
+            <tr><td class="label">Convalida DNSSEC</td><td class="value" id="dns-dnssec">--</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: Performance & Bufferbloat -->
+    <div id="tab-perf" class="tab-panel">
+      <div class="panel-card" style="margin-bottom: 20px;">
+        <h3><span>🎯</span> Tabella Multi-Target Latenza, Jitter & Packet Loss</h3>
+        <table class="detail-table" style="margin-top: 10px;">
+          <thead>
+            <tr style="text-align: left; color: var(--text-muted); font-size: 11px;">
+              <th>TARGET</th>
+              <th>MIN</th>
+              <th>MEDIANA</th>
+              <th>MAX</th>
+              <th>JITTER (RFC 3550)</th>
+              <th>LOSS</th>
+            </tr>
+          </thead>
+          <tbody id="table-perf-targets">
+            <!-- Popolato da JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="cards-grid-2">
+        <div class="panel-card">
+          <h3><span>🚦</span> Valutazione Bufferbloat Bidirezionale</h3>
+          <table class="detail-table">
+            <tr><td class="label">Valutazione Grado</td><td class="value" id="bb-grade">--</td></tr>
+            <tr><td class="label">Latenza Idle (Riposo)</td><td class="value" id="bb-idle">--</td></tr>
+            <tr><td class="label">Latenza Sotto Carico Download</td><td class="value" id="bb-loaded-dl">--</td></tr>
+            <tr><td class="label">Latenza Sotto Carico Upload</td><td class="value" id="bb-loaded-ul">--</td></tr>
+            <tr><td class="label">Max Ritardo Aggiunto</td><td class="value" id="bb-delta">--</td></tr>
+            <tr><td class="label">Diagnosi Coda Router</td><td class="value" id="bb-desc">--</td></tr>
+          </table>
+        </div>
+
+        <div class="panel-card">
+          <h3><span>⚡</span> Dettagli Velocità a Streaming Continuo</h3>
+          <table class="detail-table">
+            <tr><td class="label">Download Sostenuto</td><td class="value" id="speed-down">--</td></tr>
+            <tr><td class="label">Picco Download & Stabilità</td><td class="value" id="speed-down-meta">--</td></tr>
+            <tr><td class="label">Upload Sostenuto</td><td class="value" id="speed-up">--</td></tr>
+            <tr><td class="label">Picco Upload & Stabilità</td><td class="value" id="speed-up-meta">--</td></tr>
+            <tr><td class="label">Dati Trasferiti (DL / UL)</td><td class="value" id="speed-bytes">--</td></tr>
+            <tr><td class="label">Durata Test Continuo</td><td class="value" id="speed-duration">--</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 5: Modelli Fisici & Stime ITU-T -->
+    <div id="tab-models" class="tab-panel">
+      <div class="cards-grid-2">
+        <div class="panel-card">
+          <h3><span>🔬</span> Modello Mezzo Fisico Ultimo Miglio</h3>
+          <table class="detail-table">
+            <tr><td class="label">Tecnologia Prevista</td><td class="value" id="model-medium-name">--</td></tr>
+            <tr><td class="label">Grado di Confidenza</td><td class="value" id="model-medium-conf">--</td></tr>
+            <tr><td class="label">Primo Salto BNG (Hop 2 Provider)</td><td class="value" id="model-bng-ip">--</td></tr>
+            <tr><td class="label">Latenza e Jitter BNG</td><td class="value" id="model-bng-metrics">--</td></tr>
+          </table>
+          <div style="margin-top: 14px;">
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Fattori Determinanti:</div>
+            <ul id="model-medium-rationale" style="padding-left: 18px; font-size: 12px; color: var(--text-dim); line-height: 1.6;">
+            </ul>
+          </div>
+        </div>
+
+        <div class="panel-card">
+          <h3><span>💡</span> Efficienza di Routing Ottico & Fisico</h3>
+          <table class="detail-table">
+            <tr><td class="label">IXP di Uscita Rilevato</td><td class="value" id="opt-ixp">--</td></tr>
+            <tr><td class="label">Campus / Datacenter IXP</td><td class="value" id="opt-facility">--</td></tr>
+            <tr><td class="label">Tipologia Interconnessione</td><td class="value" id="opt-peering-type">--</td></tr>
+            <tr><td class="label">Distanza Geodetica Ortodromica</td><td class="value" id="opt-dist">--</td></tr>
+            <tr><td class="label">Lunghezza Tratta Fibra Stimata</td><td class="value" id="opt-fiber">--</td></tr>
+            <tr><td class="label">Tempo Minimo Luce in Fibra</td><td class="value" id="opt-min-rtt">--</td></tr>
+            <tr><td class="label">Indice Efficienza Routing</td><td class="value" id="opt-eff">--</td></tr>
+            <tr><td class="label">Ritardo di Accodamento/Switch</td><td class="value" id="opt-delay">--</td></tr>
+          </table>
+        </div>
+
+        <div class="panel-card">
+          <h3><span>📦</span> Bandwidth-Delay Product (BDP)</h3>
+          <table class="detail-table">
+            <tr><td class="label">Capacità Canale (BDP)</td><td class="value" id="bdp-val">--</td></tr>
+            <tr><td class="label">Finestra TCP Ottimale</td><td class="value" id="bdp-tcp">--</td></tr>
+            <tr><td class="label">Spiegazione Teoria</td><td class="value" id="bdp-desc">--</td></tr>
+          </table>
+        </div>
+
+        <div class="panel-card">
+          <h3><span>🎮</span> Rating Idoneità Applicativa (ITU-T E-model)</h3>
+          <div id="app-suitability-container" style="margin-top: 10px;">
+            <!-- Popolato dinamicamente da app.js con barre di progresso -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 6: Dispositivi LAN -->
+    <div id="tab-devices" class="tab-panel">
+      <div class="panel-card">
+        <h3><span>👥</span> Dispositivi Rilevati nella Rete Locale</h3>
+        <p style="font-size: 12px; color: var(--text-dim); margin-bottom: 14px;">
+          Dispositivi estratti dalla tabella ARP di sistema e dallo sweep socket della subnet locale.
+        </p>
+        <table class="detail-table">
+          <thead>
+            <tr style="text-align: left; color: var(--text-muted); font-size: 11px;">
+              <th>INDIRIZZO IP</th>
+              <th>INDIRIZZO MAC</th>
+              <th>PRODUTTORE (OUI)</th>
+              <th>HOSTNAME</th>
+              <th>ORIGINE</th>
+            </tr>
+          </thead>
+          <tbody id="table-lan-devices">
+            <!-- Popolato da JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tab 7: Raw JSON -->
+    <div id="tab-json" class="tab-panel">
+      <div class="panel-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3><span>📋</span> Risultato Diagnostico Completo in Formato JSON</h3>
+          <button id="btn-copy-json">Copia JSON</button>
+        </div>
+        <pre class="json-view" id="raw-json-output">In attesa di dati...</pre>
+      </div>
+    </div>
+
+  </main>
+
+  
+        <script>
+        // Dati pre-iniettati nel report esportato
+        window.PRELOADED_NETPROBE_DATA = {"timestamp": 1791963977.512197, "formatted_time": "2026-10-14 09:46:17", "quick_scan": false, "system": {"os": "Darwin", "os_release": "27.0.0", "os_version": "Darwin Kernel Version 27.0.0: Tue Aug 11 21:02:16 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T8112", "machine": "arm64", "processor": "arm", "hostname": "MacBook-Air.local", "python_version": "3.15.0", "is_root": false}, "lan": {"primary_interface_name": "en0", "primary_interface": {"name": "en0", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": "172.20.10.2", "netmask": "255.255.255.240 (/28)", "broadcast": "172.20.10.15", "ipv6_list": [{"address": "fe80::47a:3573:f4c4:b118", "prefix": 64, "type": "Link-Local"}, {"address": "2a02:b023:8012:209d:14cc:2088:4d5b:2510", "prefix": 64, "type": "Global Unicast"}, {"address": "2a02:b023:8012:209d:ed2d:10d6:bbd:340e", "prefix": 64, "type": "Global Unicast"}, {"address": "2a02:b023:8040:c19:71:25e0:80a0:2f31", "prefix": 64, "type": "Global Unicast"}, {"address": "2a02:b023:8040:c19:b92f:89a8:f2bc:e959", "prefix": 64, "type": "Global Unicast"}], "media": "autoselect", "status": "active", "type": "Wi-Fi"}, "all_interfaces": {"lo0": {"name": "lo0", "is_up": true, "is_running": true, "is_loopback": true, "flags": "UP,LOOPBACK,RUNNING,MULTICAST", "mtu": 16384, "mac": null, "vendor": "Sconosciuto", "ipv4": "127.0.0.1", "netmask": "255.0.0.0 (/8)", "broadcast": null, "ipv6_list": [{"address": "::1", "prefix": 128, "type": "Global Unicast"}, {"address": "fe80::1", "prefix": 64, "type": "Link-Local"}], "media": null, "status": null, "type": "Loopback"}, "gif0": {"name": "gif0", "is_up": false, "is_running": false, "is_loopback": false, "flags": "POINTOPOINT,MULTICAST", "mtu": 1280, "mac": null, "vendor": "Sconosciuto", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [], "media": null, "status": null, "type": "Adattatore di Rete"}, "stf0": {"name": "stf0", "is_up": false, "is_running": false, "is_loopback": false, "flags": "", "mtu": null, "mac": null, "vendor": "Sconosciuto", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [], "media": null, "status": null, "type": "Adattatore di Rete"}, "anpi1": {"name": "anpi1", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [], "media": "none", "status": "inactive", "type": "Adattatore di Rete"}, "anpi0": {"name": "anpi0", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [], "media": "none", "status": "inactive", "type": "Adattatore di Rete"}, "en3": {"name": "en3", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [], "media": "none", "status": "inactive", "type": "Ethernet"}, "en4": {"name": "en4", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [], "media": "none", "status": "inactive", "type": "Ethernet"}, "en1": {"name": "en1", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,BROADCAST,SMART,RUNNING,PROMISC,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [], "media": "autoselect <full-duplex>", "status": "inactive", "type": "Thunderbolt"}, "en2": {"name": "en2", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,BROADCAST,SMART,RUNNING,PROMISC,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [], "media": "autoselect <full-duplex>", "status": "inactive", "type": "Thunderbolt"}, "bridge0": {"name": "bridge0", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [], "media": "<unknown type>", "status": "inactive", "type": "Bridge"}, "ap1": {"name": "ap1", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [], "media": "autoselect (none)", "status": "inactive", "type": "Adattatore di Rete"}, "en0": {"name": "en0", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": "172.20.10.2", "netmask": "255.255.255.240 (/28)", "broadcast": "172.20.10.15", "ipv6_list": [{"address": "fe80::47a:3573:f4c4:b118", "prefix": 64, "type": "Link-Local"}, {"address": "2a02:b023:8012:209d:14cc:2088:4d5b:2510", "prefix": 64, "type": "Global Unicast"}, {"address": "2a02:b023:8012:209d:ed2d:10d6:bbd:340e", "prefix": 64, "type": "Global Unicast"}, {"address": "2a02:b023:8040:c19:71:25e0:80a0:2f31", "prefix": 64, "type": "Global Unicast"}, {"address": "2a02:b023:8040:c19:b92f:89a8:f2bc:e959", "prefix": 64, "type": "Global Unicast"}], "media": "autoselect", "status": "active", "type": "Wi-Fi"}, "awdl0": {"name": "awdl0", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [{"address": "fe80::84b0:40ff:fefc:6ca4", "prefix": 64, "type": "Link-Local"}], "media": "autoselect", "status": "active", "type": "Adattatore di Rete"}, "utun0": {"name": "utun0", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,POINTOPOINT,RUNNING,MULTICAST", "mtu": 1380, "mac": null, "vendor": "Sconosciuto", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [{"address": "fe80::4848:b282:3404:1d5e", "prefix": 64, "type": "Link-Local"}], "media": null, "status": null, "type": "VPN / Tunnel"}, "llw0": {"name": "llw0", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [{"address": "fe80::84b0:40ff:fefc:6ca4", "prefix": 64, "type": "Link-Local"}], "media": "autoselect (none)", "status": null, "type": "Adattatore di Rete"}, "utun1": {"name": "utun1", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,POINTOPOINT,RUNNING,MULTICAST", "mtu": 1500, "mac": null, "vendor": "Sconosciuto", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [{"address": "fe80::b39a:c8af:5490:3db9", "prefix": 64, "type": "Link-Local"}], "media": null, "status": null, "type": "VPN / Tunnel"}, "utun2": {"name": "utun2", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,POINTOPOINT,RUNNING,MULTICAST", "mtu": 2000, "mac": null, "vendor": "Sconosciuto", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [{"address": "fe80::9067:9397:9023:2bcc", "prefix": 64, "type": "Link-Local"}], "media": null, "status": null, "type": "VPN / Tunnel"}, "utun3": {"name": "utun3", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,POINTOPOINT,RUNNING,MULTICAST", "mtu": 1000, "mac": null, "vendor": "Sconosciuto", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [{"address": "fe80::ce81:b1c:bd2c:69e", "prefix": 64, "type": "Link-Local"}], "media": null, "status": null, "type": "VPN / Tunnel"}, "nan0": {"name": "nan0", "is_up": false, "is_running": false, "is_loopback": false, "flags": "BROADCAST,SMART,SIMPLEX,MULTICAST", "mtu": 1500, "mac": "02:00:00:00:00:00", "vendor": "Indirizzo MAC privato/randomizzato (Locally Administered)", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [{"address": "fe80::8cb2:8fff:fe4b:d2c1", "prefix": 64, "type": "Link-Local"}], "media": "autoselect (none)", "status": "inactive", "type": "Adattatore di Rete"}, "utun4": {"name": "utun4", "is_up": true, "is_running": true, "is_loopback": false, "flags": "UP,POINTOPOINT,RUNNING,MULTICAST", "mtu": 1380, "mac": null, "vendor": "Sconosciuto", "ipv4": null, "netmask": null, "broadcast": null, "ipv6_list": [{"address": "fe80::d3f3:3f3b:92ad:aa3", "prefix": 64, "type": "Link-Local"}], "media": null, "status": null, "type": "VPN / Tunnel"}}, "gateway": {"ipv4": "172.20.10.1", "interface": "en0", "mac": null, "vendor": "Sconosciuto", "flags": "<UP,GATEWAY,DONE,STATIC,PRCLONING,GLOBAL>", "mtu": null, "model": null, "identified_by": [], "http_server": null}, "wifi": {"supported": true, "connected": true, "interface": "en0", "ssid": null, "bssid": null, "bssid_vendor": "Produttore non catalogato", "rssi_dbm": -35, "noise_dbm": -89, "snr_db": 54, "signal_quality_pct": 100, "channel": "149 (80 MHz)", "frequency_ghz": "5 GHz", "wifi_generation": "Wi-Fi 6 / 6E (802.11ax)", "phy_mode": "802.11ax", "tx_rate_mbps": 1200.0, "mcs_index": 11, "security": "WPA3 SAE", "ssid_hidden_by_os": true}, "ethernet": {"active": false, "interface": "en0", "speed_mbps": null, "duplex": null, "media_description": null, "cable_connected": false, "switch_info": null}, "dhcp": {"server_ip": "172.20.10.1", "lease_time_seconds": 3600, "lease_time_human": "1.0 ore (3600s)", "renewal_time_seconds": null, "rebinding_time_seconds": null, "tftp_server": "172.20.10.1", "bootfile": null, "domain_search": null}, "dns": {"resolvers": ["fe80::28ea:2dff:fe3c:1d64", "172.20.10.1"], "search_domains": [], "scoped_resolvers": ["fe80::28ea:2dff:fe3c:1d64", "172.20.10.1"]}, "dns_benchmark": {"system_resolver_latency_ms": 0.71, "tested_servers": [{"name": "DNS di Sistema Locale", "ip": "fe80::28ea:2dff:fe3c:1d64", "avg_ms": 0.71}], "dnssec_validation_active": false, "fastest_resolver": null}, "arp_table": [{"ip": "172.20.10.1", "mac": "Non in cache ARP", "vendor": "Host attivo rilevato", "hostname": null, "source": "Sweep TCP"}], "devices_discovered_count": 1}, "wan": {"public_ipv4": "151.36.66.195", "public_ipv6": "2a02:b023:8040:c19:b92f:89a8:f2bc:e959", "dual_stack_enabled": true, "reverse_dns": null, "asn": "AS1267", "isp": "WIND TRE S.P.A.", "org": "AS1267 WIND TRE S.P.A.", "city": "Milan", "region": "Lombardy", "country": "IT", "country_code": "IT", "postal": "20121", "coordinates": {"latitude": 45.4643, "longitude": 9.1895}, "timezone": "Europe/Rome", "nat": {"mapped_external_ip": "151.36.66.195", "mapped_external_port": 44559, "nat_type": "Full-Cone / Restricted-Cone NAT (Friendly NAT)", "mapping_behavior": "Endpoint-Independent Mapping (EIM)", "double_nat_detected": false, "cgnat_detected": false, "details": "La porta esterna (44559) viene preservata su destinazioni diverse. Ottimo per P2P e Gaming."}, "router_services": {"upnp_igd_available": false, "upnp_server": null, "nat_pmp_available": false}, "privacy_and_routing": {"is_vpn_or_proxy": false, "confidence": "Bassa", "type": "Connessione Residenziale / Diretta", "indicators": ["Indirizzo IP compatibile con operatore di rete fissa o mobile residenziale."]}}, "ixp": {"detected_ixp": "Milano (Hub Caldera / MIX) - Interconnessione PNI", "ixp_city": "Milano", "ixp_facility": "Campus Caldera, Via Caldera 21", "peering_type": "Direct PNI (Private Network Interconnect)", "detection_method": "Topologia BGP & Analisi Latenza di Transito AS", "confidence": "90%", "matched_hop_ip": "188.114.100.5", "matched_subnet": null, "rtt_to_ixp_ms": 48.752, "traceroute_hops": [{"hop": 1, "ip": "172.20.10.1", "rtt_ms": 6.97, "rdns": null}, {"hop": 2, "ip": "100.110.147.129", "rtt_ms": 55.139, "rdns": null}, {"hop": 3, "ip": "*", "rtt_ms": null, "rdns": null}, {"hop": 4, "ip": "151.7.198.48", "rtt_ms": 62.914, "rdns": null}, {"hop": 5, "ip": "*", "rtt_ms": null, "rdns": null}, {"hop": 6, "ip": "151.7.198.189", "rtt_ms": 460.932, "rdns": null}, {"hop": 7, "ip": "151.7.198.167", "rtt_ms": 57.593, "rdns": null}, {"hop": 8, "ip": "151.6.0.49", "rtt_ms": 44.571, "rdns": null}, {"hop": 9, "ip": "*", "rtt_ms": null, "rdns": null}, {"hop": 10, "ip": "188.114.100.5", "rtt_ms": 65.024, "rdns": null}, {"hop": 11, "ip": "1.1.1.1", "rtt_ms": 48.752, "rdns": "one.one.one.one"}], "hop2_bng": {"ip": "100.110.147.129", "min_ms": 28.1, "median_ms": 30.54, "avg_ms": 33.47, "p95_ms": 40.93, "jitter_ms": 5.33, "tail_variance_ms": 10.39, "samples_count": 10, "packet_loss_pct": 33.3, "is_responsive": true}, "peeringdb_facilities": [{"name": "TIX", "ix_id": 273, "ipaddr4": "193.42.140.7", "ipaddr6": null, "speed": 100}, {"name": "TOP-IX: Public Peering VLAN", "ix_id": 115, "ipaddr4": "194.116.96.24", "ipaddr6": "2001:7f8:23:ffff::24", "speed": 10000}, {"name": "Namex Rome: VLAN Peering", "ix_id": 121, "ipaddr4": "193.201.28.11", "ipaddr6": "2001:7f8:10::1267", "speed": 200000}, {"name": "MIX-IT", "ix_id": 35, "ipaddr4": "217.29.66.9", "ipaddr6": "2001:7f8:b:100:1d1:a5d0:1267:9", "speed": 200000}, {"name": "MIX-IT", "ix_id": 35, "ipaddr4": "217.29.66.179", "ipaddr6": null, "speed": 200000}, {"name": "AMS-IX", "ix_id": 26, "ipaddr4": "80.249.209.236", "ipaddr6": "2001:7f8:1::a500:1267:2", "speed": 200000}, {"name": "AMS-IX", "ix_id": 26, "ipaddr4": "80.249.210.243", "ipaddr6": "2001:7f8:1::a500:1267:1", "speed": 200000}, {"name": "DE-CIX Frankfurt: DE-CIX Frankfurt Peering LAN", "ix_id": 31, "ipaddr4": "80.81.192.215", "ipaddr6": "2001:7f8::4f3:0:2", "speed": 200000}, {"name": "DE-CIX Frankfurt: DE-CIX Frankfurt Peering LAN", "ix_id": 31, "ipaddr4": "80.81.193.215", "ipaddr6": "2001:7f8::4f3:0:1", "speed": 200000}, {"name": "LINX LON1: Main", "ix_id": 18, "ipaddr4": "195.66.225.65", "ipaddr6": "2001:7f8:4::4f3:1", "speed": 100000}, {"name": "VSIX: Primary", "ix_id": 311, "ipaddr4": "185.1.115.5", "ipaddr6": null, "speed": 10000}, {"name": "MIX Roma", "ix_id": 4377, "ipaddr4": "185.188.83.10", "ipaddr6": "2001:7f8:101:14::10", "speed": 100000}, {"name": "Namex Rome: VLAN Peering", "ix_id": 121, "ipaddr4": "193.201.29.13", "ipaddr6": "2001:7f8:10::b:1267", "speed": 200000}], "analysis_notes": ["Traffico instradato tramite PNI (Private Network Interconnect): interconnessione diretta in fibra punto-punto tra l'Autonomous System dell'operatore e il fornitore edge.", "L'operatore mantiene inoltre peering pubblico attivo su: TOP-IX: Public Peering VLAN, Namex Rome: VLAN Peering, MIX-IT."]}, "performance": {"latency_targets": {"Gateway Locale": {"name": "Gateway Locale", "host": "172.20.10.1", "type": "lan", "reachable": true, "min_ms": 3.52, "avg_ms": 3.99, "median_ms": 3.96, "max_ms": 4.59, "jitter_ms": 0.38, "packet_loss_pct": 0.0, "samples_count": 6}, "Cloudflare DNS": {"name": "Cloudflare DNS", "host": "1.1.1.1", "type": "anycast", "reachable": true, "min_ms": 50.81, "avg_ms": 68.1, "median_ms": 65.34, "max_ms": 91.19, "jitter_ms": 14.1, "packet_loss_pct": 0.0, "samples_count": 6}, "Google DNS": {"name": "Google DNS", "host": "8.8.8.8", "type": "anycast", "reachable": true, "min_ms": 35.13, "avg_ms": 42.38, "median_ms": 41.69, "max_ms": 51.01, "jitter_ms": 6.12, "packet_loss_pct": 0.0, "samples_count": 6}, "Quad9 Secure": {"name": "Quad9 Secure", "host": "9.9.9.9", "type": "anycast", "reachable": true, "min_ms": 33.81, "avg_ms": 39.88, "median_ms": 36.04, "max_ms": 57.4, "jitter_ms": 7.12, "packet_loss_pct": 0.0, "samples_count": 6}}, "primary_latency": {"name": "Cloudflare DNS", "host": "1.1.1.1", "type": "anycast", "reachable": true, "min_ms": 50.81, "avg_ms": 68.1, "median_ms": 65.34, "max_ms": 91.19, "jitter_ms": 14.1, "packet_loss_pct": 0.0, "samples_count": 6}, "gateway_latency": {"name": "Gateway Locale", "host": "172.20.10.1", "type": "lan", "reachable": true, "min_ms": 3.52, "avg_ms": 3.99, "median_ms": 3.96, "max_ms": 4.59, "jitter_ms": 0.38, "packet_loss_pct": 0.0, "samples_count": 6}, "bufferbloat": {"idle_latency_ms": 65.34, "download_loaded_ms": 183.03, "download_delta_ms": 117.69, "upload_loaded_ms": 38.88, "upload_delta_ms": 0.0, "max_delta_ms": 117.69, "grade": "D", "description": "Alto: Forte accumulo di coda; latenza triplicata sotto traffico (DL: +117.69ms, UL: +0.0ms)."}, "speed": {"download_mbps": 30.32, "download_peak_mbps": 41.4, "download_stability_pct": 67.8, "bytes_downloaded": 28442624, "download_duration_s": 8.16, "upload_mbps": 13.08, "upload_peak_mbps": 14.29, "upload_stability_pct": 90.8, "bytes_uploaded": 13238272, "upload_duration_s": 8.14, "bytes_transferred": 41680896, "test_duration_s": 16.3, "download_samples": [[0.21, 0.0], [0.41, 5.2], [0.61, 17.9], [0.82, 17.9], [1.02, 10.39], [1.22, 30.68], [1.43, 33.94], [1.63, 28.18], [1.84, 30.67], [2.04, 36.15], [2.24, 23.39], [2.44, 23.01], [2.65, 35.8], [2.85, 12.79], [3.06, 15.53], [3.26, 7.67], [3.47, 12.78], [3.67, 12.78], [3.88, 10.23], [4.08, 10.23], [4.29, 33.27], [4.49, 23.01], [4.69, 41.75], [4.9, 20.57], [5.1, 38.34], [5.31, 48.65], [5.51, 41.33], [5.72, 43.47], [5.92, 44.28], [6.12, 46.02], [6.33, 23.04], [6.53, 12.78], [6.74, 30.68], [6.94, 30.99], [7.14, 38.85], [7.34, 33.93], [7.55, 41.47], [7.75, 43.51], [7.96, 56.25], [8.16, 49.56]], "upload_samples": [[0.2, 0.0], [0.4, 10.43], [0.61, 15.34], [0.81, 15.34], [1.01, 13.03], [1.22, 15.62], [1.42, 17.9], [1.63, 15.34], [1.83, 15.34], [2.04, 15.34], [2.24, 12.78], [2.45, 12.78], [2.65, 15.34], [2.86, 10.23], [3.06, 12.82], [3.27, 12.79], [3.47, 15.34], [3.68, 10.24], [3.88, 5.23], [4.08, 10.23], [4.29, 10.23], [4.49, 15.47], [4.69, 12.78], [4.9, 18.21], [5.1, 10.47], [5.3, 15.68], [5.5, 13.1], [5.7, 17.93], [5.91, 10.22], [6.11, 10.23], [6.32, 15.34], [6.52, 10.41], [6.72, 10.37], [6.92, 20.64], [7.13, 10.33], [7.33, 15.44], [7.54, 10.22], [7.74, 12.99], [7.94, 18.21], [8.14, 10.46]]}}, "estimations": {"physical_medium": {"predicted_medium": "Mobile Cellular (4G LTE / 5G Mobile Hotspot)", "confidence_pct": 94.0, "bng_hop": {"ip": "100.110.147.129", "min_ms": 28.1, "median_ms": 30.54, "jitter_ms": 5.33, "tail_variance_ms": 10.39, "is_responsive": true}, "scores_breakdown": {"FTTH (Fibra Ottica Pura GPON / XGS-PON)": 0.0, "FTTC / VDSL2 (Fibra Misto Rame)": 0.0, "Mobile Cellular (4G LTE / 5G Mobile Hotspot)": 135.0, "FWA (Fixed Wireless Access / Eolo / Linkem)": 35.0, "Satellite LEO (Starlink Bassa Orbita)": 0.0, "Satellite GEO (Geostazionario Tradizionale)": 0.0}, "rationale": ["Gateway 172.20.10.1 rilevato: firma univoca e deterministica di Apple iOS Personal Hotspot (Tethering Mobile 4G/5G).", "Dispersione temporale sull'accesso BNG (5.3 ms jitter, coda p95: +10.4 ms): compatibile con scheduling radio su frame LTE/5G o FWA."]}, "optical_routing": {"nearest_ixp_name": "Milano (Hub Caldera / MIX) - Interconnessione PNI", "ixp_facility": "Campus Caldera, Via Caldera 21", "ixp_city": "Milano", "peering_type": "Direct PNI (Private Network Interconnect)", "straight_line_distance_km": 6.8, "estimated_fiber_path_km": 9.1, "theoretical_optical_min_rtt_ms": 0.07, "measured_rtt_ms": 48.75, "routing_efficiency_pct": 0.1, "switching_and_queuing_delay_ms": 48.69, "detour_rating": "Moderato (Detour di Peering presente)"}, "bandwidth_delay_product": {"bdp_bytes": 247638, "bdp_kb": 241.8, "bdp_mb": 0.24, "recommended_tcp_window_kb": 362, "pipe_capacity_description": "Capacità del canale in transito: 241.8 KB di pacchetti simultanei senza perdita di throughput."}, "voice_quality_mos": {"mos_score": 4.27, "r_factor": 87.5, "quality_rating": "Molto Buona (Standard HD Voice)", "effective_delay_ms": 60.9}, "application_suitability": {"competitive_gaming": {"status": "BUONO", "score": 70, "badge": "warning", "desc": "Giocabile senza problemi; lieve ritardo nei titoli reflex-heavy."}, "video_streaming": {"status": "LIMITATO", "score": 50, "badge": "warning", "desc": "Banda adatta solo a 1080p Full HD; possibili buffering in 4K."}, "video_conferencing": {"status": "IMPECCABILE", "score": 96, "badge": "success", "desc": "Voce cristallina e video HD senza glitch o desincronizzazioni."}, "cloud_gaming": {"status": "CRITICO", "score": 40, "badge": "danger", "desc": "Latenza o bufferbloat degradano l'esperienza di controllo real-time."}}}};
+        </script>
+        <script>
+        /**
+ * NetProbe Pro - Frontend Logic & Live Updates
+ */
+
+let currentData = null;
+let pollTimer = null;
+
+document.addEventListener("DOMContentLoaded", () => {
+  setupTabs();
+  setupButtons();
+  loadInitialData();
+});
+
+function setupTabs() {
+  const tabButtons = document.querySelectorAll(".tab-btn");
+  const tabPanels = document.querySelectorAll(".tab-panel");
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.getAttribute("data-tab");
+
+      tabButtons.forEach(b => b.classList.remove("active"));
+      tabPanels.forEach(p => p.classList.remove("active"));
+
+      btn.classList.add("active");
+      const targetPanel = document.getElementById(targetId);
+      if (targetPanel) {
+        targetPanel.classList.add("active");
+      }
+    });
+  });
+}
+
+function setupButtons() {
+  document.getElementById("btn-quick-scan").addEventListener("click", () => triggerScan(true));
+  document.getElementById("btn-full-scan").addEventListener("click", () => triggerScan(false));
+  document.getElementById("btn-export-json").addEventListener("click", exportJSON);
+  document.getElementById("btn-copy-json").addEventListener("click", copyJSON);
+  document.getElementById("btn-retry").addEventListener("click", () => triggerScan(false));
+}
+
+const STEP_ORDER = ["lan", "wan", "ixp", "latency", "download", "upload", "estimation"];
+
+async function getJSON(url, opts) {
+  const ctl = new AbortController();
+  const to = setTimeout(() => ctl.abort(), 15000);
+  try {
+    const res = await fetch(url, { ...(opts || {}), signal: ctl.signal, cache: "no-store" });
+    let body = null;
+    try { body = await res.json(); } catch (e) { /* corpo non JSON */ }
+    return { status: res.status, body };
+  } finally {
+    clearTimeout(to);
+  }
+}
+
+async function loadInitialData() {
+  // Report esportato: dati incorporati, nessun server
+  if (window.PRELOADED_NETPROBE_DATA) {
+    currentData = window.PRELOADED_NETPROBE_DATA;
+    renderAll(currentData);
+    updateStatus(`Report del ${currentData.formatted_time || ""}`, false);
+    setButtonsState(false);
+    return;
+  }
+  updateStatus("Caricamento dati di rete...", true);
+  try {
+    const { status, body } = await getJSON("/api/data");
+    if (status === 200 && body) {
+      currentData = body;
+      renderAll(body);
+      updateStatus(`Ultima scansione: ${body.formatted_time || "adesso"}`, false);
+    } else {
+      // La scansione rapida iniziale e' ancora in corso: mostra il progresso
+      showScanPanel(true);
+      setButtonsState(false);
+      pollStatus();
+    }
+  } catch (err) {
+    showScanError("Impossibile contattare il server locale.");
+  }
+}
+
+async function triggerScan(quick = false) {
+  hideScanError();
+  setButtonsState(false);
+  showScanPanel(true);
+  updateScanUI({ progress: 0, phase: "lan", message: "Avvio scansione...", live: {} });
+  try {
+    const { status, body } = await getJSON(`/api/scan?quick=${quick}`);
+    if (status !== 200 && status !== 409) throw new Error(`HTTP ${status}`);
+    pollStatus();   // se 409 una scansione e' gia' in corso: ci si aggancia
+  } catch (err) {
+    showScanError("Avvio della scansione non riuscito: " + err.message);
+    setButtonsState(true);
+  }
+}
+
+function pollStatus() {
+  if (pollTimer) clearTimeout(pollTimer);
+  let failures = 0;
+  const tick = async () => {
+    try {
+      const { body } = await getJSON("/api/status");
+      failures = 0;
+      if (body) updateScanUI(body);
+      if (body && body.scanning) {
+        pollTimer = setTimeout(tick, 400);
+        return;
+      }
+      if (body && body.error) {
+        showScanError(body.error);
+        setButtonsState(true);
+        return;
+      }
+      const { body: data } = await getJSON("/api/data");
+      if (data && !data.pending) {
+        currentData = data;
+        renderAll(data);
+        updateStatus(`Scansione completata: ${data.formatted_time}`, false);
+        showScanPanel(false);
+      }
+      setButtonsState(true);
+    } catch (err) {
+      if (++failures >= 5) {
+        showScanError("Connessione al server persa. Controlla che NetProbe sia ancora in esecuzione.");
+        setButtonsState(true);
+        return;
+      }
+      pollTimer = setTimeout(tick, 800);
+    }
+  };
+  tick();
+}
+
+function showScanPanel(on) {
+  document.getElementById("scan-panel").classList.toggle("active", on);
+}
+function showScanError(msg) {
+  showScanPanel(true);
+  document.getElementById("scan-error-msg").textContent = msg;
+  document.getElementById("scan-error").classList.add("active");
+  updateStatus("Errore", false);
+}
+function hideScanError() {
+  document.getElementById("scan-error").classList.remove("active");
+}
+
+function updateScanUI(st) {
+  const pct = Math.max(0, Math.min(100, st.progress || 0));
+  document.getElementById("scan-fill").style.width = pct + "%";
+  document.getElementById("scan-phase").textContent = `${st.message || ""} (${pct}%)`;
+  const live = st.live || {};
+  const valEl = document.getElementById("scan-live-val");
+  if (live.dir && live.mbps !== undefined) {
+    valEl.textContent = live.mbps.toFixed(1);
+    document.getElementById("scan-live-unit").textContent = live.dir === "down" ? "Mbps ↓" : "Mbps ↑";
+  } else {
+    valEl.textContent = "--";
+  }
+  const idx = STEP_ORDER.indexOf(st.phase);
+  document.querySelectorAll("#scan-steps span").forEach(el => {
+    const i = STEP_ORDER.indexOf(el.dataset.step);
+    el.classList.toggle("on", i === idx);
+    el.classList.toggle("done", idx >= 0 && i < idx || st.phase === "done");
+  });
+  if (st.scanning) updateStatus(st.message || "Scansione in corso...", true);
+}
+
+function setButtonsState(enabled) {
+  document.getElementById("btn-quick-scan").disabled = !enabled;
+  document.getElementById("btn-full-scan").disabled = !enabled;
+}
+
+function updateStatus(message, isScanning) {
+  const pulse = document.getElementById("pulse-indicator");
+  const text = document.getElementById("status-text");
+
+  text.textContent = message;
+  if (isScanning) {
+    pulse.classList.add("scanning");
+  } else {
+    pulse.classList.remove("scanning");
+  }
+}
+
+function renderAll(data) {
+  if (!data) return;
+
+  const lan = data.lan || {};
+  const wan = data.wan || {};
+  const perf = data.performance || {};
+  const est = data.estimations || {};
+  const sys = data.system || {};
+
+  // 1. Meta sistema
+  document.getElementById("system-meta").textContent = 
+    `${sys.hostname || "localhost"} • ${sys.os || ""} ${sys.os_release || ""} (${sys.machine || ""})`;
+
+  // 2. Quick Metrics Top Cards
+  const speed = perf.speed || {};
+  document.getElementById("metric-download").textContent = speed.download_mbps ? speed.download_mbps.toFixed(1) : "--";
+  document.getElementById("metric-download-sub").textContent = speed.download_peak_mbps ? 
+    `Picco: ${speed.download_peak_mbps.toFixed(1)} Mbps • Stabilità: ${speed.download_stability_pct || "--"}%` : 
+    "Test streaming su CDN";
+
+  document.getElementById("metric-upload").textContent = speed.upload_mbps ? speed.upload_mbps.toFixed(1) : "--";
+  document.getElementById("metric-upload-sub").textContent = speed.upload_peak_mbps ? 
+    `Picco: ${speed.upload_peak_mbps.toFixed(1)} Mbps • Stabilità: ${speed.upload_stability_pct || "--"}%` : 
+    "Upload continuo su edge";
+
+  const primLat = perf.primary_latency || {};
+  document.getElementById("metric-ping").textContent = primLat.min_ms !== undefined ? primLat.min_ms.toFixed(1) : "--";
+  document.getElementById("metric-jitter-sub").textContent = `Jitter: ${primLat.jitter_ms !== undefined ? primLat.jitter_ms.toFixed(2) : "--"} ms (RFC 3550)`;
+
+  const bb = perf.bufferbloat || {};
+  const bbElem = document.getElementById("metric-bufferbloat");
+  bbElem.textContent = bb.grade ? `Grado ${bb.grade}` : "--";
+  bbElem.style.color = getGradeColor(bb.grade);
+  document.getElementById("metric-bufferbloat-sub").textContent = 
+    `DL: +${bb.download_delta_ms !== undefined ? bb.download_delta_ms : 0}ms • UL: +${bb.upload_delta_ms !== undefined ? bb.upload_delta_ms : 0}ms`;
+
+  const mos = est.voice_quality_mos || {};
+  const mosElem = document.getElementById("metric-mos");
+  mosElem.textContent = mos.mos_score !== undefined ? mos.mos_score.toFixed(2) : "--";
+  mosElem.style.color = mos.mos_score >= 4.0 ? "var(--accent-emerald)" : (mos.mos_score >= 3.5 ? "var(--accent-amber)" : "var(--accent-rose)");
+  document.getElementById("metric-mos-sub").textContent = mos.quality_rating || "Qualità VoIP / Audio";
+
+  const med = est.physical_medium || {};
+  const medShort = (med.predicted_medium || "--").split("(")[0].trim();
+  document.getElementById("metric-medium").textContent = medShort;
+  document.getElementById("metric-medium-sub").textContent = `Confidenza modello: ${med.confidence_pct || "--"}%`;
+
+  // 3. Topology Chain
+  renderTopology(lan, wan, est, sys);
+
+  // 4. Tab 1: LAN & Hardware
+  renderLAN(lan);
+
+  // 5. Tab 2: WAN & Internet
+  renderWAN(wan, data.ixp || {});
+
+  // 6. Tab 3: NAT & Routing
+  renderNAT(lan, wan);
+
+  // 7. Tab 4: Performance & Bufferbloat
+  renderPerformance(perf);
+
+  // 8. Tab 5: Modelli & Stime ITU-T
+  renderModels(est, data.ixp || {});
+
+  // 9. Tab 6: Dispositivi LAN
+  renderDevices(lan.arp_table || []);
+
+  // 10. Tab 7: Raw JSON
+  document.getElementById("raw-json-output").textContent = JSON.stringify(data, null, 2);
+}
+
+function renderTopology(lan, wan, est, sys) {
+  const pIface = lan.primary_interface || {};
+  document.getElementById("topo-host-name").textContent = sys.hostname || "Host Locale";
+  document.getElementById("topo-host-ip").textContent = pIface.ipv4 || "127.0.0.1";
+  document.getElementById("topo-host-meta").textContent = `${lan.primary_interface_name || "iface"} (${pIface.type || "LAN"})`;
+
+  const gw = lan.gateway || {};
+  document.getElementById("topo-gw-name").textContent = gw.vendor && gw.vendor !== "Sconosciuto" ? `${gw.vendor.split("/")[0].trim()}${gw.model ? " " + gw.model : ""}` : "Default Gateway";
+  document.getElementById("topo-gw-ip").textContent = gw.ipv4 || "Router";
+  document.getElementById("topo-gw-meta").textContent = gw.mac || "Layer 2 Bridge";
+
+  document.getElementById("topo-isp-name").textContent = wan.isp || "Operatore ISP";
+  document.getElementById("topo-isp-ip").textContent = wan.public_ipv4 || "IP Pubblico";
+  document.getElementById("topo-isp-meta").textContent = wan.asn || "Autonomous System";
+
+  const opt = est.optical_routing || {};
+  document.getElementById("topo-edge-name").textContent = opt.nearest_ixp_name || "Anycast Core";
+  document.getElementById("topo-edge-city").textContent = wan.city ? `${wan.city}, ${wan.country}` : "Global Internet";
+  document.getElementById("topo-edge-meta").textContent = `Efficienza: ${opt.routing_efficiency_pct || "--"}%`;
+}
+
+function renderLAN(lan) {
+  const pIface = lan.primary_interface || {};
+  document.getElementById("lan-iface-name").textContent = lan.primary_interface_name || "--";
+  document.getElementById("lan-iface-type").textContent = pIface.type || "--";
+  document.getElementById("lan-mac").textContent = pIface.mac || "--";
+  document.getElementById("lan-vendor").textContent = pIface.vendor || "--";
+  document.getElementById("lan-ipv4").textContent = pIface.ipv4 || "--";
+  document.getElementById("lan-mask").textContent = pIface.netmask || "--";
+  document.getElementById("lan-bcast").textContent = pIface.broadcast || "--";
+  document.getElementById("lan-mtu").textContent = pIface.mtu ? `${pIface.mtu} bytes` : "--";
+
+  const ip6List = pIface.ipv6_list || [];
+  if (ip6List.length > 0) {
+    document.getElementById("lan-ipv6").innerHTML = ip6List.map(x => `<div>${x.address}/${x.prefix} <span class="badge badge-cyan">${x.type}</span></div>`).join("");
+  } else {
+    document.getElementById("lan-ipv6").textContent = "Nessun indirizzo IPv6";
+  }
+
+  // Link Params (Wi-Fi o Ethernet o altro)
+  const wifi = lan.wifi || {};
+  const eth = lan.ethernet || {};
+  const table = document.getElementById("table-link-params");
+  table.innerHTML = "";
+
+  const ifName = pIface.name || "";
+  const isWifi = (wifi && (wifi.connected || wifi.ssid || wifi.rssi_dbm !== null)) || (pIface && pIface.type === "Wi-Fi");
+  const isEth = !isWifi && ((eth && (eth.active || eth.cable_connected || eth.speed_mbps !== null)) || (pIface && pIface.type === "Ethernet"));
+
+  if (isWifi) {
+    addRow(table, "Modalità Link", `<span class="badge badge-cyan">Wi-Fi Wireless (${ifName})</span>`);
+    addRow(table, "SSID Rete", wifi.ssid || (wifi.ssid_hidden_by_os ? "Nascosto da macOS (Localizzazione non concessa al Terminale)" : "--"));
+    addRow(table, "BSSID (Access Point)", `${wifi.bssid || "--"} (${wifi.bssid_vendor || "Sconosciuto"})`);
+    addRow(table, "Standard Generazione", `${wifi.wifi_generation || "--"} [${wifi.phy_mode || ""}]`);
+    addRow(table, "Banda & Canale", `${wifi.frequency_ghz || "--"} (Canale ${wifi.channel || "--"})`);
+    addRow(table, "Potenza Segnale (RSSI)", `${wifi.rssi_dbm !== null ? wifi.rssi_dbm + " dBm" : "--"}`);
+    addRow(table, "Rumore di Fondo (Noise)", `${wifi.noise_dbm !== null ? wifi.noise_dbm + " dBm" : "--"}`);
+    addRow(table, "Rapporto Segnale/Rumore (SNR)", `${wifi.snr_db !== null ? wifi.snr_db + " dB" : "--"}`);
+    addRow(table, "Qualità Segnale", `${wifi.signal_quality_pct !== null ? wifi.signal_quality_pct + "%" : "--"}`);
+    addRow(table, "Link Speed (Tx Rate)", `${wifi.tx_rate_mbps !== null ? wifi.tx_rate_mbps + " Mbps" : "--"}`);
+    addRow(table, "MCS Index (Modulazione)", `${wifi.mcs_index !== null ? wifi.mcs_index : "--"}`);
+    addRow(table, "Sicurezza / Crittografia", wifi.security || "--");
+  } else if (isEth) {
+    addRow(table, "Modalità Link", `<span class="badge badge-success">Cablata Ethernet (${ifName})</span>`);
+    addRow(table, "Velocità Link Negoziata", eth.speed_mbps ? `${eth.speed_mbps} Mbps` : "--");
+    addRow(table, "Modalità Duplex", eth.duplex || "--");
+    addRow(table, "Descrizione Media", eth.media_description || "--");
+    addRow(table, "Stato Collegamento Cavo", eth.cable_connected ? `<span class="badge badge-success">Attivo</span>` : "Inattivo");
+
+    // Switch Discovery Info
+    const sw = eth.switch_info;
+    if (sw) {
+      if (sw.detected) {
+        if (sw.switch_name) addRow(table, "Switch Collegato", `<span class="badge badge-cyan">${sw.switch_name}</span>`);
+        if (sw.switch_model) addRow(table, "Modello Switch", sw.switch_model);
+        if (sw.port_id) addRow(table, "Porta Switch", `<span class="badge badge-purple">${sw.port_id}</span>`);
+        if (sw.vlan) addRow(table, "VLAN Porta", sw.vlan);
+        if (sw.management_ip) addRow(table, "IP Gestione Switch", sw.management_ip);
+        if (sw.protocol) addRow(table, "Protocollo Rilevato", sw.protocol);
+      } else {
+        addRow(table, "Apparato Switch", `<span class="badge badge-outline">${sw.switch_type || "Switch L2 Unmanaged"}</span>`);
+        if (sw.description) addRow(table, "Diagnosi Switch", `<span style="font-size:11px;color:var(--text-dim);">${sw.description}</span>`);
+      }
+    }
+  } else {
+    addRow(table, "Modalità Link", `<span class="badge badge-purple">${(pIface && pIface.type) || "Interfaccia Virtuale / VPN"} (${ifName})</span>`);
+    addRow(table, "Nome Dispositivo", ifName || "--");
+    addRow(table, "MTU", (pIface && pIface.mtu) ? `${pIface.mtu} byte` : "--");
+    addRow(table, "Stato Operativo", (pIface && pIface.is_up) ? `<span class="badge badge-success">UP</span>` : `<span class="badge badge-warning">DOWN</span>`);
+  }
+}
+
+function renderWAN(wan, ixp) {
+  document.getElementById("wan-ipv4").textContent = wan.public_ipv4 || "--";
+  document.getElementById("wan-ipv6").textContent = wan.public_ipv6 || "Non rilevato";
+  document.getElementById("wan-dualstack").innerHTML = wan.dual_stack_enabled ? 
+    `<span class="badge badge-success">Attivo (IPv4 + IPv6)</span>` : 
+    `<span class="badge badge-warning">IPv4-Only</span>`;
+
+  document.getElementById("wan-rdns").textContent = wan.reverse_dns || "--";
+  document.getElementById("wan-isp").textContent = wan.isp || "--";
+  document.getElementById("wan-asn").textContent = `${wan.asn || ""} (${wan.org || ""})`;
+
+  const priv = wan.privacy_and_routing || {};
+  document.getElementById("wan-vpn").innerHTML = priv.is_vpn_or_proxy ? 
+    `<span class="badge badge-warning">${priv.type}</span>` : 
+    `<span class="badge badge-success">${priv.type}</span>`;
+
+  document.getElementById("wan-city").textContent = wan.city || "--";
+  document.getElementById("wan-region").textContent = wan.region || "--";
+  document.getElementById("wan-country").textContent = `${wan.country || ""} (${wan.country_code || ""})`;
+  document.getElementById("wan-postal").textContent = wan.postal || "--";
+  
+  const coords = wan.coordinates || {};
+  if (coords.latitude && coords.longitude) {
+    document.getElementById("wan-coords").innerHTML = 
+      `<a href="https://www.openstreetmap.org/?mlat=${coords.latitude}&mlon=${coords.longitude}" target="_blank" style="color: var(--accent-cyan); text-decoration: none;">
+        ${coords.latitude}, ${coords.longitude} ↗
+      </a>`;
+  } else {
+    document.getElementById("wan-coords").textContent = "--";
+  }
+
+  document.getElementById("wan-timezone").textContent = wan.timezone || "--";
+
+  // Card IXP & Peering Architecture
+  const ixpData = ixp || {};
+  const ixpNameEl = document.getElementById("wan-ixp-name");
+  if (ixpNameEl) ixpNameEl.textContent = ixpData.detected_ixp || "--";
+
+  const ixpFacEl = document.getElementById("wan-ixp-facility");
+  if (ixpFacEl) ixpFacEl.textContent = ixpData.ixp_facility || "--";
+
+  const ixpTypeEl = document.getElementById("wan-ixp-type");
+  if (ixpTypeEl) ixpTypeEl.innerHTML = ixpData.peering_type ? `<span class="badge badge-cyan">${ixpData.peering_type}</span>` : "--";
+
+  const ixpMethEl = document.getElementById("wan-ixp-method");
+  if (ixpMethEl) ixpMethEl.textContent = ixpData.detection_method ? `${ixpData.detection_method} (${ixpData.confidence || ""})` : "--";
+
+  const ixpHopEl = document.getElementById("wan-ixp-hop");
+  if (ixpHopEl) {
+    if (ixpData.matched_hop_ip) {
+      ixpHopEl.textContent = `${ixpData.matched_hop_ip}${ixpData.matched_subnet ? ' (' + ixpData.matched_subnet + ')' : ''}`;
+    } else {
+      ixpHopEl.textContent = "PNI Point-to-Point (Interconnessione AS Privata)";
+    }
+  }
+
+  const ixpRttEl = document.getElementById("wan-ixp-rtt");
+  if (ixpRttEl) ixpRttEl.textContent = ixpData.rtt_to_ixp_ms ? `${ixpData.rtt_to_ixp_ms} ms` : "--";
+
+  const ixpPdbEl = document.getElementById("wan-ixp-peeringdb");
+  if (ixpPdbEl) {
+    const pdbFacs = ixpData.peeringdb_facilities || [];
+    if (pdbFacs.length > 0) {
+      ixpPdbEl.textContent = pdbFacs.slice(0, 4).map(f => f.name).join(", ");
+    } else {
+      ixpPdbEl.textContent = "Nessuna struttura IXP pubblica registrata per l'ASN (Transito PNI diretto)";
+    }
+  }
+}
+
+function renderNAT(lan, wan) {
+  const nat = wan.nat || {};
+  document.getElementById("nat-type").innerHTML = `<span class="badge badge-cyan">${nat.nat_type || "--"}</span>`;
+  document.getElementById("nat-behavior").textContent = nat.mapping_behavior || "--";
+  document.getElementById("nat-port").textContent = nat.mapped_external_port || "--";
+  document.getElementById("nat-cgnat").innerHTML = nat.cgnat_detected ? 
+    `<span class="badge badge-danger">Rilevato (RFC 6598)</span>` : 
+    `<span class="badge badge-success">Assente (IP Pubblico Dedicato)</span>`;
+
+  const serv = wan.router_services || {};
+  document.getElementById("nat-upnp").innerHTML = serv.upnp_igd_available ? 
+    `<span class="badge badge-warning">Attivo</span>` : 
+    `<span class="badge badge-success">Disattivato (Sicuro)</span>`;
+
+  document.getElementById("nat-pmp").innerHTML = serv.nat_pmp_available ? 
+    `<span class="badge badge-warning">Attivo</span>` : 
+    `<span class="badge badge-success">Disattivato</span>`;
+
+  document.getElementById("nat-details").textContent = nat.details || "--";
+
+  // Gateway & DHCP
+  const gw = lan.gateway || {};
+  document.getElementById("gw-ip").textContent = gw.ipv4 || "--";
+  document.getElementById("gw-vendor").textContent = (gw.vendor && gw.vendor !== "Sconosciuto") ? gw.vendor : "Non identificato";
+  document.getElementById("gw-model").textContent = gw.model || "--";
+  document.getElementById("gw-mac").textContent = gw.mac ? `${gw.mac}${gw.identified_by ? "  [" + gw.identified_by.join(", ") + "]" : ""}` : "--";
+
+  const dhcp = lan.dhcp || {};
+  document.getElementById("dhcp-server").textContent = dhcp.server_ip || "--";
+  document.getElementById("dhcp-lease").textContent = dhcp.lease_time_human || "--";
+
+  const dns = lan.dns || {};
+  document.getElementById("dns-resolvers").textContent = (dns.resolvers || []).join(", ") || "Default OS";
+  
+  const dnsBm = lan.dns_benchmark || {};
+  document.getElementById("dns-latency").textContent = dnsBm.system_resolver_latency_ms ? `${dnsBm.system_resolver_latency_ms} ms` : "--";
+  document.getElementById("dns-dnssec").innerHTML = dnsBm.dnssec_validation_active ? 
+    `<span class="badge badge-success">Attiva (Validante)</span>` : 
+    `<span class="badge badge-warning">Non Validante</span>`;
+}
+
+function renderPerformance(perf) {
+  const tbody = document.getElementById("table-perf-targets");
+  tbody.innerHTML = "";
+
+  const targets = perf.latency_targets || {};
+  for (const [name, t] of Object.entries(targets)) {
+    const tr = document.createElement("tr");
+    if (t.reachable) {
+      tr.innerHTML = `
+        <td class="label" style="color: #fff; font-weight: 600;">${name} <span style="font-size: 10px; color: var(--text-dim);">(${t.host || ""})</span></td>
+        <td class="value">${t.min_ms.toFixed(2)} ms</td>
+        <td class="value" style="color: var(--accent-cyan);">${t.median_ms.toFixed(2)} ms</td>
+        <td class="value">${t.max_ms.toFixed(2)} ms</td>
+        <td class="value">${t.jitter_ms.toFixed(2)} ms</td>
+        <td class="value" style="color: ${t.packet_loss_pct === 0 ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">${t.packet_loss_pct}%</td>
+      `;
+    } else {
+      tr.innerHTML = `
+        <td class="label" style="color: #fff;">${name}</td>
+        <td colspan="5" style="color: var(--text-dim); font-style: italic;">Non raggiungibile / Filtrato</td>
+      `;
+    }
+    tbody.appendChild(tr);
+  }
+
+  // Bufferbloat Bidirezionale
+  const bb = perf.bufferbloat || {};
+  const bbGradeElem = document.getElementById("bb-grade");
+  bbGradeElem.innerHTML = `<span class="badge" style="background: ${getGradeColor(bb.grade)}20; color: ${getGradeColor(bb.grade)}; border: 1px solid ${getGradeColor(bb.grade)}40; font-size: 14px;">Grado ${bb.grade || "--"}</span>`;
+  document.getElementById("bb-idle").textContent = `${bb.idle_latency_ms || "--"} ms`;
+  document.getElementById("bb-loaded-dl").textContent = `${bb.download_loaded_ms || "--"} ms (+${bb.download_delta_ms || 0} ms)`;
+  document.getElementById("bb-loaded-ul").textContent = `${bb.upload_loaded_ms || "--"} ms (+${bb.upload_delta_ms || 0} ms)`;
+  document.getElementById("bb-delta").textContent = `+${bb.max_delta_ms || 0} ms`;
+  document.getElementById("bb-desc").textContent = bb.description || "--";
+
+  // Speed Streaming Continuo
+  const sp = perf.speed || {};
+  document.getElementById("speed-down").textContent = sp.download_mbps ? `${sp.download_mbps.toFixed(2)} Mbps` : "--";
+  document.getElementById("speed-down-meta").textContent = sp.download_peak_mbps ? 
+    `Picco: ${sp.download_peak_mbps.toFixed(2)} Mbps • Stabilità: ${sp.download_stability_pct || "--"}%` : "--";
+
+  document.getElementById("speed-up").textContent = sp.upload_mbps ? `${sp.upload_mbps.toFixed(2)} Mbps` : "--";
+  document.getElementById("speed-up-meta").textContent = sp.upload_peak_mbps ? 
+    `Picco: ${sp.upload_peak_mbps.toFixed(2)} Mbps • Stabilità: ${sp.upload_stability_pct || "--"}%` : "--";
+
+  const dlMb = ((sp.bytes_downloaded || 0) / (1024 * 1024)).toFixed(1);
+  const ulMb = ((sp.bytes_uploaded || 0) / (1024 * 1024)).toFixed(1);
+  const totMb = ((sp.bytes_transferred || 0) / (1024 * 1024)).toFixed(1);
+  document.getElementById("speed-bytes").textContent = `DL: ${dlMb} MB • UL: ${ulMb} MB (Tot: ${totMb} MB)`;
+  document.getElementById("speed-duration").textContent = `${sp.test_duration_s || 0} secondi (DL: ${sp.download_duration_s || 0}s, UL: ${sp.upload_duration_s || 0}s)`;
+}
+
+function renderModels(est, ixp) {
+  // Mezzo Fisico
+  const med = est.physical_medium || {};
+  document.getElementById("model-medium-name").innerHTML = `<span class="badge badge-cyan" style="font-size: 13px;">${med.predicted_medium || "--"}</span>`;
+  document.getElementById("model-medium-conf").textContent = `${med.confidence_pct || "--"}% di affidabilità`;
+
+  // BNG Hop 2 metrics
+  const bng = med.bng_hop || {};
+  const bngIpEl = document.getElementById("model-bng-ip");
+  if (bngIpEl) bngIpEl.textContent = bng.ip || "Non rilevato";
+
+  const bngMetricsEl = document.getElementById("model-bng-metrics");
+  if (bngMetricsEl) {
+    if (bng.min_ms !== null && bng.min_ms !== undefined) {
+      let bngStr = `Min: ${bng.min_ms} ms • Med: ${bng.median_ms} ms • Jitter: ${bng.jitter_ms} ms`;
+      if (bng.tail_variance_ms) bngStr += ` • Coda p95: +${bng.tail_variance_ms} ms`;
+      bngMetricsEl.textContent = bngStr;
+    } else {
+      bngMetricsEl.textContent = "Non risponde a ICMP echo diretto (filtrato da ACL BNG)";
+    }
+  }
+
+  const rationaleList = document.getElementById("model-medium-rationale");
+  rationaleList.innerHTML = "";
+  (med.rationale || []).forEach(r => {
+    const li = document.createElement("li");
+    li.textContent = r;
+    rationaleList.appendChild(li);
+  });
+
+  // Routing Ottico
+  const opt = est.optical_routing || {};
+  document.getElementById("opt-ixp").textContent = opt.nearest_ixp_name || "--";
+  const optFacEl = document.getElementById("opt-facility");
+  if (optFacEl) optFacEl.textContent = opt.ixp_facility || "--";
+  const optPeerEl = document.getElementById("opt-peering-type");
+  if (optPeerEl) optPeerEl.innerHTML = opt.peering_type ? `<span class="badge badge-cyan">${opt.peering_type}</span>` : "--";
+  document.getElementById("opt-dist").textContent = `${opt.straight_line_distance_km || "--"} km verso ${opt.ixp_city || "hub"}`;
+  document.getElementById("opt-fiber").textContent = `~${opt.estimated_fiber_path_km || "--"} km (con fattore di posa terrestre)`;
+  document.getElementById("opt-min-rtt").textContent = `${opt.theoretical_optical_min_rtt_ms || "--"} ms (Velocità luce nella fibra)`;
+  document.getElementById("opt-eff").innerHTML = `<span class="badge badge-success">${opt.routing_efficiency_pct || "--"}%</span> (${opt.detour_rating || ""})`;
+  document.getElementById("opt-delay").textContent = `${opt.switching_and_queuing_delay_ms || "--"} ms`;
+
+  // BDP
+  const bdp = est.bandwidth_delay_product || {};
+  document.getElementById("bdp-val").textContent = `${bdp.bdp_kb || "--"} KB (${bdp.bdp_bytes || "--"} bytes)`;
+  document.getElementById("bdp-tcp").textContent = `${bdp.recommended_tcp_window_kb || "--"} KB`;
+  document.getElementById("bdp-desc").textContent = bdp.pipe_capacity_description || "--";
+
+  // Suitability
+  const container = document.getElementById("app-suitability-container");
+  container.innerHTML = "";
+
+  const apps = est.application_suitability || {};
+  const appMapping = [
+    { key: "competitive_gaming", label: "Gaming Competitivo / Esport (Tick-rate)" },
+    { key: "video_streaming", label: "Streaming Video 4K HDR & 8K" },
+    { key: "video_conferencing", label: "Videoconferenze (Zoom, Teams, Meet)" },
+    { key: "cloud_gaming", label: "Cloud Gaming (GeForce NOW, Parsec)" }
+  ];
+
+  appMapping.forEach(item => {
+    const app = apps[item.key] || {};
+    const score = app.score || 0;
+    const col = score >= 80 ? "var(--accent-emerald)" : (score >= 60 ? "var(--accent-amber)" : "var(--accent-rose)");
+
+    const row = document.createElement("div");
+    row.className = "rating-row";
+    row.innerHTML = `
+      <div class="rating-header">
+        <span style="font-weight: 600; color: #fff;">${item.label}</span>
+        <span style="font-weight: 700; color: ${col};">${app.status || "--"} (${score}/100)</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" style="width: ${score}%; background: ${col};"></div>
+      </div>
+      <div style="font-size: 11px; color: var(--text-dim); margin-top: 3px;">${app.desc || ""}</div>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function renderDevices(devices) {
+  const tbody = document.getElementById("table-lan-devices");
+  tbody.innerHTML = "";
+
+  if (!devices || devices.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color: var(--text-dim); text-align: center; padding: 20px;">Nessun dispositivo in cache ARP o rilevato.</td></tr>`;
+    return;
+  }
+
+  devices.forEach(d => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="value" style="color: var(--accent-cyan);">${d.ip}</td>
+      <td class="value">${d.mac}</td>
+      <td style="color: #fff;">${d.vendor || "Sconosciuto"}</td>
+      <td style="color: var(--text-muted);">${d.hostname || "--"}</td>
+      <td><span class="badge badge-cyan">${d.source || "ARP"}</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function addRow(table, label, valueHtml) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td class="label">${label}</td><td class="value">${valueHtml}</td>`;
+  table.appendChild(tr);
+}
+
+function getGradeColor(grade) {
+  switch (grade) {
+    case "A+":
+    case "A":
+      return "var(--accent-emerald)";
+    case "B":
+      return "#22c55e";
+    case "C":
+      return "var(--accent-amber)";
+    case "D":
+    case "F":
+      return "var(--accent-rose)";
+    default:
+      return "var(--text-main)";
+  }
+}
+
+function exportJSON() {
+  if (!currentData) return;
+  const str = JSON.stringify(currentData, null, 2);
+  const blob = new Blob([str], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `netprobe_report_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function copyJSON() {
+  if (!currentData) return;
+  navigator.clipboard.writeText(JSON.stringify(currentData, null, 2)).then(() => {
+    alert("JSON copiato negli appunti!");
+  });
+}
+
+        </script>
+        
+</body>
+</html>

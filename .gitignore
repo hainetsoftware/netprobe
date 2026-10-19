@@ -1,0 +1,78 @@
+# ==============================================================================
+# NetProbe .gitignore - Comprehensive configuration for macOS, Python & IDEs
+# ==============================================================================
+
+# --- macOS System & Desktop Services Store ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
+
+# --- Python Bytecode & Cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# --- Distribution, Packaging & Build Artifacts ---
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Virtual Environments ---
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# --- Testing, Coverage & Property-Based Testing ---
+.hypothesis/
+.pytest_cache/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.tox/
+.nox/
+htmlcov/
+
+# --- IDEs & Code Editors ---
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+*.bak
+
+# --- NetProbe Local Runtime, Cache & Diagnostic Output ---
+*.log
+scan.json
+/tmp/
+peeringdb_cache.json
+~/.netprobe/
+tests/fixtures/*.anon.json.tmp

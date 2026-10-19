@@ -1,0 +1,212 @@
+Network:
+
+    Ethernet Adapter (en3):
+
+      Type: Ethernet
+      Hardware: Ethernet
+      BSD Device Name: en3
+      IPv4:
+          Configuration Method: DHCP
+      IPv6:
+          Configuration Method: Automatic
+      Ethernet:
+          MAC Address: 7e:7a:22:fe:19:8c
+          Media Options: 
+          Media Subtype: none
+      Proxies:
+          Exceptions List: *.local, 169.254/16
+          FTP Passive Mode: Yes
+          HTTP Proxy Enabled: No
+          HTTP Proxy Port: 9090
+          HTTP Proxy Server: 127.0.0.1
+          HTTPS Proxy Enabled: No
+          HTTPS Proxy Port: 9090
+          HTTPS Proxy Server: 127.0.0.1
+          Auto Configure Enabled: No
+          Auto Discovery Enabled: No
+          SOCKS Proxy Enabled: No
+      Service Order: 0
+
+    Ethernet Adapter (en4):
+
+      Type: Ethernet
+      Hardware: Ethernet
+      BSD Device Name: en4
+      IPv4:
+          Configuration Method: DHCP
+      IPv6:
+          Configuration Method: Automatic
+      Ethernet:
+          MAC Address: 7e:7a:22:fe:19:8d
+          Media Options: 
+          Media Subtype: none
+      Proxies:
+          Exceptions List: *.local, 169.254/16
+          FTP Passive Mode: Yes
+          HTTP Proxy Enabled: No
+          HTTP Proxy Port: 9090
+          HTTP Proxy Server: 127.0.0.1
+          HTTPS Proxy Enabled: No
+          HTTPS Proxy Port: 9090
+          HTTPS Proxy Server: 127.0.0.1
+          Auto Configure Enabled: No
+          Auto Discovery Enabled: No
+          SOCKS Proxy Enabled: No
+      Service Order: 1
+
+    USB 10/100/1000 LAN:
+
+      Type: Ethernet
+      Hardware: Ethernet
+      BSD Device Name: en5
+      IPv4:
+          Configuration Method: DHCP
+      IPv6:
+          Configuration Method: Automatic
+      Proxies:
+          Exceptions List: *.local, 169.254/16
+          FTP Passive Mode: Yes
+          HTTP Proxy Enabled: No
+          HTTP Proxy Port: 9090
+          HTTP Proxy Server: 127.0.0.1
+          HTTPS Proxy Enabled: No
+          HTTPS Proxy Port: 9090
+          HTTPS Proxy Server: 127.0.0.1
+          Auto Configure Enabled: No
+          Auto Discovery Enabled: No
+          SOCKS Proxy Enabled: No
+      Service Order: 2
+
+    USB 10/100/1000 LAN 2:
+
+      Type: Ethernet
+      Hardware: Ethernet
+      BSD Device Name: en8
+      IPv4:
+          Configuration Method: DHCP
+      IPv6:
+          Configuration Method: Automatic
+      Proxies:
+          Exceptions List: *.local, 169.254/16
+          FTP Passive Mode: Yes
+      Service Order: 3
+
+    USB 10/100/1G/2.5G LAN:
+
+      Type: Ethernet
+      Hardware: Ethernet
+      BSD Device Name: en9
+      IPv4:
+          Configuration Method: DHCP
+      IPv6:
+          Configuration Method: Automatic
+      Proxies:
+          Exceptions List: *.local, 169.254/16
+          FTP Passive Mode: Yes
+      Service Order: 4
+
+    Wi-Fi:
+
+      Type: AirPort
+      Hardware: AirPort
+      BSD Device Name: en0
+      IPv4 Addresses: 192.168.1.95
+      IPv4:
+          Additional Routes:
+              Destination Address: 192.168.1.95
+              Subnet Mask: 255.255.255.255
+              Destination Address: 169.254.0.0
+              Subnet Mask: 255.255.0.0
+          Addresses: 192.168.1.95
+          ARP Resolved Hardware Address: 78:90:a2:11:22:33
+          ARP Resolved IP Address: 192.168.1.1
+          Configuration Method: DHCP
+          Confirmed Interface Name: en0
+          Interface Name: en0
+          Network Signature: IPv4.Router=192.168.1.1;IPv4.RouterHardwareAddress=78:90:a2:11:22:33
+          NetworkSignatureHash: {length = 20, bytes = 0xa6ecb5bd119c9661bfdf7ed4b920cce7f59b9fce}
+          Router: 192.168.1.1
+          Subnet Masks: 255.255.255.0
+      IPv6:
+          Configuration Method: Automatic
+      DNS:
+          Domain Name: homenet.telecomitalia.it
+          Server Addresses: 192.168.1.11, 192.168.1.1
+      DHCP Server Responses:
+          Domain Name: homenet.telecomitalia.it
+          Domain Name Servers: 192.168.1.11,192.168.1.1
+          Lease Duration (seconds): 0
+          DHCP Message Type: 0x05
+          Routers: 192.168.1.1
+          Server Identifier: 192.168.1.1
+          Subnet Mask: 255.255.255.0
+      Ethernet:
+          MAC Address: a8:8f:d9:11:22:33
+          Media Options: 
+          Media Subtype: Auto Select
+      Proxies:
+          Exceptions List: *.local, 169.254/16
+          FTP Passive Mode: Yes
+          HTTP Proxy Enabled: No
+          HTTP Proxy Port: 9090
+          HTTP Proxy Server: 127.0.0.1
+          HTTPS Proxy Enabled: No
+          HTTPS Proxy Port: 9090
+          HTTPS Proxy Server: 127.0.0.1
+      Service Order: 5
+
+    Thunderbolt Bridge:
+
+      Type: Ethernet
+      Hardware: Ethernet
+      BSD Device Name: bridge0
+      IPv4:
+          Configuration Method: DHCP
+      IPv6:
+          Configuration Method: Automatic
+      Proxies:
+          Exceptions List: *.local, 169.254/16
+          FTP Passive Mode: Yes
+          HTTP Proxy Enabled: No
+          HTTP Proxy Port: 9090
+          HTTP Proxy Server: 127.0.0.1
+          HTTPS Proxy Enabled: No
+          HTTPS Proxy Port: 9090
+          HTTPS Proxy Server: 127.0.0.1
+          Auto Configure Enabled: No
+          Auto Discovery Enabled: No
+          SOCKS Proxy Enabled: No
+      Service Order: 6
+
+    iPhone:
+
+      Type: Ethernet
+      Hardware: Ethernet
+      BSD Device Name: en6
+      IPv4:
+          Configuration Method: DHCP
+      IPv6:
+          Configuration Method: Automatic
+      Proxies:
+          Exceptions List: *.local, 169.254/16
+          FTP Passive Mode: Yes
+          HTTP Proxy Enabled: No
+          HTTP Proxy Port: 9090
+          HTTP Proxy Server: 127.0.0.1
+          HTTPS Proxy Enabled: No
+          HTTPS Proxy Port: 9090
+          HTTPS Proxy Server: 127.0.0.1
+          Auto Configure Enabled: No
+          Auto Discovery Enabled: No
+          SOCKS Proxy Enabled: No
+      Service Order: 7
+
+    ProtonVPN:
+
+      Type: VPN (ch.protonvpn.mac)
+      IPv4:
+          Configuration Method: VPN
+      IPv6:
+          Configuration Method: Automatic
+      Service Order: 8
+

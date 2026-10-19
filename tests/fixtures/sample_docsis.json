@@ -1,0 +1,43 @@
+{
+  "lan": {
+    "gateway": {"ipv4": "192.168.1.1"},
+    "primary_interface": {"mtu": 1500}
+  },
+  "wan": {
+    "isp": "Comcast Cable Communications",
+    "org": "Comcast",
+    "asn": "AS7922",
+    "reverse_dns": "c-1-2-3-4.hsd1.ca.comcast.net",
+    "coordinates": {"latitude": 37.7749, "longitude": -122.4194},
+    "nat": {"cgnat_detected": false}
+  },
+  "ixp": {
+    "hop2_bng": {
+      "ip": "68.85.1.1",
+      "min_ms": 11.5,
+      "median_ms": 17.0,
+      "jitter_ms": 3.2,
+      "is_responsive": true,
+      "samples_count": 30
+    },
+    "path_mtu": 1500
+  },
+  "performance": {
+    "primary_latency": {
+      "min_ms": 12.0,
+      "median_ms": 17.5,
+      "jitter_ms": 3.1,
+      "packet_loss_pct": 0.0,
+      "samples_count": 30
+    },
+    "speed": {
+      "download_mbps": 400.0,
+      "upload_mbps": 20.0
+    },
+    "bufferbloat": {
+      "download_delta_ms": 80.0,
+      "upload_delta_ms": 140.0,
+      "grade": "C"
+    }
+  }
+}

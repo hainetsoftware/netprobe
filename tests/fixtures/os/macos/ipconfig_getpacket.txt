@@ -1,0 +1,25 @@
+op = BOOTREPLY
+htype = 1
+flags = 0x0
+hlen = 6
+hops = 0
+xid = 0xc3687851
+secs = 0
+ciaddr = 0.0.0.0
+yiaddr = 192.168.1.95
+siaddr = 0.0.0.0
+giaddr = 0.0.0.0
+chaddr = c2:2a:1c:c8:0:36
+sname = 
+file = 
+options:
+Options count is 9
+dhcp_message_type (uint8): ACK 0x5
+subnet_mask (ip): 255.255.255.0
+router (ip_mult): {192.168.1.1}
+domain_name_server (ip_mult): {192.168.1.11, 192.168.1.1}
+domain_name (string): homenet.telecomitalia.it
+server_identifier (ip): 192.168.1.1
+lease_time (uint32): 0x15180
+host_name (string): Mac
+end (none): 

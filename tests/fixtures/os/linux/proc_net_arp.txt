@@ -1,0 +1,4 @@
+IP address       HW type     Flags       HW address            Mask     Device
+192.168.1.1      0x1         0x2         78:90:a2:11:22:33     *        eth0
+192.168.1.11     0x1         0x2         dc:a6:32:11:22:33     *        eth0
+192.168.1.254    0x1         0x2         00:11:22:33:44:55     *        eth0

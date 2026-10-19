@@ -1,0 +1,43 @@
+{
+  "lan": {
+    "gateway": {"ipv4": "192.168.1.1"},
+    "primary_interface": {"mtu": 1500}
+  },
+  "wan": {
+    "isp": "Telecom Italia",
+    "org": "TIM S.p.A.",
+    "asn": "AS3269",
+    "reverse_dns": "1-2-3-4.ftth.tim.it",
+    "coordinates": {"latitude": 45.4642, "longitude": 9.1900},
+    "nat": {"cgnat_detected": false}
+  },
+  "ixp": {
+    "hop2_bng": {
+      "ip": "192.0.2.1",
+      "min_ms": 2.1,
+      "median_ms": 2.5,
+      "jitter_ms": 0.3,
+      "is_responsive": true,
+      "samples_count": 30
+    },
+    "path_mtu": 1500
+  },
+  "performance": {
+    "primary_latency": {
+      "min_ms": 2.5,
+      "median_ms": 3.0,
+      "jitter_ms": 0.4,
+      "packet_loss_pct": 0.0,
+      "samples_count": 30
+    },
+    "speed": {
+      "download_mbps": 940.0,
+      "upload_mbps": 300.0
+    },
+    "bufferbloat": {
+      "download_delta_ms": 3.0,
+      "upload_delta_ms": 5.0,
+      "grade": "A+"
+    }
+  }
+}
