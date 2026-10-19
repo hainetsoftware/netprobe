@@ -6,6 +6,14 @@ It analyzes LAN hardware (Wi-Fi 7/6E/Ethernet), discovers connected switches (LL
 ---
 
 ## 1. Architectural Invariants (Strict)
+6. **STRICT PRIVACY & PII PROTECTION (CRITICAL)**:
+   - NEVER commit or push real personal identifiable information (PII) to GitHub.
+   - Any test capture, sample output, fixture, or documentation MUST be strictly anonymized:
+     - Real public IPs, reverse DNS PTR hostnames, local hostnames (e.g. usernames, personal MacBooks).
+     - Physical hardware MAC addresses (keep only OUI prefix, mask device octets).
+     - Geographic coordinates and personal location data (use generic regional baricenters).
+   - Before executing any , perform a strict automated check for personal IP/MAC/hostname patterns.
+
 
 1. **No Overfitting & No Hard-Coded Network Artifacts**:
    - NEVER hard-code specific traceroute IPs, fixed hop indices, or magic millisecond offsets tailored to a single line or provider.
