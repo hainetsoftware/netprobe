@@ -812,3 +812,684 @@ def format_raw_json(data: Dict[str, Any]) -> List[Tuple[str, str]]:
         lines.append((l, "dim" if l.strip().startswith('"') else "normal"))
 
     return lines
+
+
+# ==============================================================================
+# MODERN TEXTUAL RESPONSIVE VIEWS & REACTIVE WIDGETS
+# ==============================================================================
+
+from textual.app import ComposeResult
+from textual.widget import Widget
+from textual.widgets import Label, Static, DataTable
+from textual.containers import Vertical, Horizontal, Container, VerticalScroll
+from textual.reactive import reactive
+
+
+def _make_kv(key: str, val: Any = "-", unit: str = "", val_id: Optional[str] = None, val_class: str = "kv-val") -> Horizontal:
+    """Crea una riga orizzontale chiave-valore per le card Textual."""
+    v_str = str(val) if val is not None else "-"
+    if unit and v_str != "-":
+        v_str = f"{v_str} {unit}"
+    lbl_val = Label(v_str, id=val_id, classes=val_class) if val_id else Label(v_str, classes=val_class)
+    return Horizontal(
+        Label(f"• {key:<34} :", classes="kv-key"),
+        lbl_val,
+        classes="kv-row"
+    )
+
+
+class DashboardView(VerticalScroll):
+    """Scheda 1: Panoramica e metriche sintetiche chiave."""
+    data = reactive(None)
+
+    def compose(self) -> ComposeResult:
+        with Container(id="dash-empty"):
+            yield Label("⚡  NETPROBE PRO - PRONTO", id="empty-state-title")
+            yield Label("Nessuna scansione presente. Premi [▶ Avvia Scansione Completa] (o tasto Spazio) per avviare l'analisi.", id="empty-state-subtitle")
+
+        with Container(id="dash-content"):
+            with Container(classes="card"):
+                yield Label("▶  SISTEMA & INTERFACCIA ATTIVA", classes="card-title")
+                yield Label("-", id="dash-sys-label")
+
+            with Horizontal(classes="hero-metric-row"):
+                with Container(classes="hero-card"):
+                    yield Label("▶ MEZZO FISICO (Stima)", classes="card-title-emerald")
+                    yield Label("-", id="dash-medium-title", classes="hero-value")
+                    yield Label("-", id="dash-medium-conf")
+                    yield Label("-", id="dash-medium-bng", classes="hero-subtitle")
+
+                with Container(classes="hero-card"):
+                    yield Label("▶ BANDA PASSANTE", classes="card-title")
+                    yield Label("-", id="dash-speed-title", classes="hero-value-cyan")
+                    yield Label("-", id="dash-speed-ul")
+                    yield Label("-", id="dash-speed-server", classes="hero-subtitle")
+
+                with Container(classes="hero-card"):
+                    yield Label("▶ LATENZA & BUFFERBLOAT", classes="card-title-amber")
+                    yield Label("-", id="dash-bb-title", classes="hero-value")
+                    yield Label("-", id="dash-bb-grade")
+                    yield Label("-", id="dash-bb-deltas", classes="hero-subtitle")
+
+            with Horizontal(classes="hero-metric-row"):
+                with Container(classes="hero-card"):
+                    yield Label("▶ INSTRADAMENTO & PEERING", classes="card-title")
+                    yield Label("-", id="dash-ixp-title", classes="hero-value")
+                    yield Label("-", id="dash-ixp-eff")
+                    yield Label("-", id="dash-ixp-route", classes="hero-subtitle")
+
+                with Container(classes="hero-card"):
+                    yield Label("▶ QUALITÀ VOCALE & APPLICAZIONI", classes="card-title-emerald")
+                    yield Label("-", id="dash-voice-title", classes="hero-value")
+                    yield Label("-", id="dash-app-gaming")
+                    yield Label("-", id="dash-app-streaming", classes="hero-subtitle")
+
+    def on_mount(self):
+        self._update_display(self.data)
+
+    def watch_data(self, new_data):
+        if self.is_mounted:
+            self._update_display(new_data)
+
+    def _update_display(self, data):
+        c_empty = self.query_one("#dash-empty", Container)
+        c_content = self.query_one("#dash-content", Container)
+        if not data:
+            c_empty.display = True
+            c_content.display = False
+            return
+
+        c_empty.display = False
+        c_content.display = True
+
+        sys_s = data.get("system") or {}
+        lan = data.get("lan") or {}
+        p_if = lan.get("primary_interface") or {}
+        self.query_one("#dash-sys-label", Label).update(
+            f"Host: [b]{sys_s.get('hostname', '-')}[/b] | OS: {sys_s.get('os', '-')} ({sys_s.get('arch', '-')}) | Python {sys_s.get('python', '-')} | Interfaccia: [b]{p_if.get('name', '-')}[/b] ({p_if.get('type', '-')})"
+        )
+
+        est = data.get("estimations") or {}
+        phys = est.get("physical_medium") or {}
+        med_name = phys.get("predicted_medium", "Indeterminato")
+        conf = phys.get("confidence_pct", 0.0)
+        self.query_one("#dash-medium-title", Label).update(med_name)
+        self.query_one("#dash-medium-conf", Label).update(f"Confidenza: {conf:.1f}% (Non attribuito: {phys.get('unattributed_pct', 0.0):.1f}%)")
+        bng = phys.get("bng_hop") or {}
+        if bng.get("ip"):
+            self.query_one("#dash-medium-bng", Label).update(f"BNG: {bng.get('ip')} (Min RTT: {bng.get('min_ms')} ms)")
+        else:
+            self.query_one("#dash-medium-bng", Label).update("Nessun hop BNG rilevato")
+
+        perf = data.get("performance") or {}
+        speed = perf.get("speed") or {}
+        dl_m = speed.get("download_mbps")
+        ul_m = speed.get("upload_mbps")
+        if dl_m is not None:
+            self.query_one("#dash-speed-title", Label).update(f"DL: {dl_m:.1f} Mbps (Picco: {speed.get('download_peak_mbps', dl_m):.1f} Mbps)")
+            self.query_one("#dash-speed-ul", Label).update(f"UL: {ul_m:.1f} Mbps (Picco: {speed.get('upload_peak_mbps', ul_m):.1f} Mbps)" if ul_m is not None else "UL: N/D")
+            self.query_one("#dash-speed-server", Label).update(f"Server: {', '.join(speed.get('servers_used') or ['Cloudflare Anycast'])}")
+        else:
+            self.query_one("#dash-speed-title", Label).update("Test Velocità: N/D (Scansione Rapida)")
+            self.query_one("#dash-speed-ul", Label).update("Banda sostenuta non misurata")
+            self.query_one("#dash-speed-server", Label).update("Avvia scansione completa per il test di velocità")
+
+        prim_lat = perf.get("primary_latency") or {}
+        rtt_val = prim_lat.get("min_ms")
+        jit_val = prim_lat.get("jitter_ms")
+        self.query_one("#dash-bb-title", Label).update(f"Min RTT: {rtt_val if rtt_val is not None else 'N/D'} ms | Jitter: {jit_val if jit_val is not None else 'N/D'} ms")
+        bb = perf.get("bufferbloat") or {}
+        grade = bb.get("grade") or "N/D"
+        self.query_one("#dash-bb-grade", Label).update(f"Bufferbloat: Grado [b]{grade}[/b]")
+        self.query_one("#dash-bb-deltas", Label).update(f"DL delta: +{bb.get('download_delta_ms') or 0.0:.1f} ms | UL delta: +{bb.get('upload_delta_ms') or 0.0:.1f} ms")
+
+        ixp = data.get("ixp") or {}
+        opt = est.get("optical_routing") or {}
+        self.query_one("#dash-ixp-title", Label).update(ixp.get("detected_ixp") or "IXP non identificato")
+        eff = opt.get("routing_efficiency_pct")
+        fiber_km = opt.get("estimated_fiber_path_km")
+        self.query_one("#dash-ixp-eff", Label).update(f"Efficienza: {eff:.1f}% | Tratta Fibra: ~{fiber_km or 'N/D'} km" if eff is not None else "Efficienza ottica: Non applicabile")
+        self.query_one("#dash-ixp-route", Label).update(f"Distanza Geodetica: ~{opt.get('straight_line_distance_km') or 'N/D'} km | {opt.get('detour_rating', 'N/D')}")
+
+        voice = est.get("voice_quality_mos") or {}
+        self.query_one("#dash-voice-title", Label).update(f"Voice MOS: {voice.get('mos_score', 'N/D')} / 4.5 ({voice.get('quality_rating', 'N/D')})")
+        app_s = est.get("application_suitability") or {}
+        game_st = (app_s.get("competitive_gaming") or {}).get("status", "N/D")
+        stream_st = (app_s.get("video_streaming") or {}).get("status", "N/D")
+        self.query_one("#dash-app-gaming", Label).update(f"Gaming: {game_st} | 4K Streaming: {stream_st}")
+        conf_st = (app_s.get("video_conferencing") or {}).get("status", "N/D")
+        cloud_st = (app_s.get("cloud_gaming") or {}).get("status", "N/D")
+        self.query_one("#dash-app-streaming", Label).update(f"Video Call: {conf_st} | Cloud Gaming: {cloud_st}")
+
+
+class LanView(VerticalScroll):
+    """Scheda 2: Configurazione LAN, Wi-Fi / Ethernet, Gateway, DHCP e DNSSEC."""
+    data = reactive(None)
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="card"):
+            yield Label("▶  SCHEDA DI RETE & CONFIGURAZIONE LAN", classes="card-title")
+            yield _make_kv("Interfaccia Attiva", val_id="lan-iface")
+            yield _make_kv("Indirizzo Fisico (MAC)", val_id="lan-mac")
+            yield _make_kv("Produttore Hardware (OUI)", val_id="lan-oui")
+            yield _make_kv("Indirizzo IPv4 Locale", val_id="lan-ip")
+            yield _make_kv("Maschera di Sottorete", val_id="lan-mask")
+            yield _make_kv("Indirizzo Broadcast", val_id="lan-bcast")
+            yield _make_kv("MTU Interfaccia", val_id="lan-mtu")
+            yield _make_kv("IPv6 Link-Local", val_id="lan-ipv6")
+
+        with Container(classes="card"):
+            yield Label("▶  PARAMETRI MEDIA (ETHERNET / WI-FI)", classes="card-title")
+            yield _make_kv("Velocità di Link / Tx Rate", val_id="lan-speed")
+            yield _make_kv("Modalità Duplex / Standard Wi-Fi", val_id="lan-duplex")
+            yield _make_kv("Stato Cavo / Segnale RSSI", val_id="lan-carrier")
+            yield _make_kv("Switch L2 / Rumore & SNR", val_id="lan-switch")
+
+        with Container(classes="card"):
+            yield Label("▶  GATEWAY, DHCP & RISOLUZIONE DNS", classes="card-title")
+            yield _make_kv("Default Gateway (Router)", val_id="lan-gw")
+            yield _make_kv("MAC Address Router", val_id="lan-gw-mac")
+            yield _make_kv("Produttore Router (OUI)", val_id="lan-gw-oui")
+            yield _make_kv("Server DHCP", val_id="lan-dhcp")
+            yield _make_kv("Durata Concessione (Lease)", val_id="lan-lease")
+            yield _make_kv("Server DNS di Sistema", val_id="lan-dns")
+            yield _make_kv("Tempo Risoluzione DNS Locale", val_id="lan-dns-time")
+
+        with Container(classes="card"):
+            yield Label("▶  CONVALIDA CRITTOGRAFICA DNSSEC PER RISOLUTORE", classes="card-title")
+            table = DataTable(id="table-dnssec")
+            table.zebra_stripes = True
+            yield table
+
+    def on_mount(self):
+        tbl = self.query_one("#table-dnssec", DataTable)
+        tbl.add_columns("Server DNS", "PTR Hostname", "Tipo", "Stato Convalida DNSSEC")
+        self._update_display(self.data)
+
+    def watch_data(self, new_data):
+        if self.is_mounted:
+            self._update_display(new_data)
+
+    def _update_display(self, data):
+        if not data:
+            return
+        lan = data.get("lan") or {}
+        p_if = lan.get("primary_interface") or {}
+        self.query_one("#lan-iface", Label).update(f"{p_if.get('name', '-')} ({p_if.get('type', '-')})")
+        self.query_one("#lan-mac", Label).update(str(p_if.get("mac", "-")))
+        self.query_one("#lan-oui", Label).update(str(p_if.get("vendor", "-")))
+        self.query_one("#lan-ip", Label).update(str(p_if.get("ipv4", "-")))
+        self.query_one("#lan-mask", Label).update(f"{p_if.get('netmask', '-')} (/{p_if.get('cidr', '-')})")
+        self.query_one("#lan-bcast", Label).update(str(p_if.get("broadcast", "-")))
+        self.query_one("#lan-mtu", Label).update(f"{p_if.get('mtu', '-')} bytes" if p_if.get("mtu") else "-")
+        self.query_one("#lan-ipv6", Label).update(str(p_if.get("ipv6_link_local", "-") or "-"))
+
+        eth = lan.get("ethernet") or {}
+        wifi = lan.get("wifi") or {}
+        if eth:
+            self.query_one("#lan-speed", Label).update(f"{eth.get('speed_mbps', '-')} Mbps")
+            self.query_one("#lan-duplex", Label).update(f"{eth.get('duplex', '-')} ({eth.get('media_description', '-')})")
+            self.query_one("#lan-carrier", Label).update(f"Attivo / {eth.get('status', 'Connesso')}")
+            sw = lan.get("switch_discovery") or {}
+            self.query_one("#lan-switch", Label).update(str(sw.get("summary") or sw.get("system_name") or "Switch L2 unmanaged / diretto"))
+        elif wifi:
+            self.query_one("#lan-speed", Label).update(f"Tx Rate: {wifi.get('tx_rate_mbps', '-')} Mbps (MCS {wifi.get('mcs_index', '-')})")
+            self.query_one("#lan-duplex", Label).update(f"Standard: {wifi.get('standard', '-')} | Canale {wifi.get('channel', '-')}")
+            self.query_one("#lan-carrier", Label).update(f"RSSI: {wifi.get('rssi_dbm', '-')} dBm | Rumore: {wifi.get('noise_dbm', '-')} dBm")
+            self.query_one("#lan-switch", Label).update(f"SNR: {wifi.get('snr_db', '-')} dB | SSID: {wifi.get('ssid', '-')}")
+        else:
+            self.query_one("#lan-speed", Label).update("-")
+            self.query_one("#lan-duplex", Label).update("-")
+            self.query_one("#lan-carrier", Label).update("-")
+            self.query_one("#lan-switch", Label).update("-")
+
+        gw = lan.get("gateway") or {}
+        self.query_one("#lan-gw", Label).update(str(gw.get("ipv4", "-")))
+        self.query_one("#lan-gw-mac", Label).update(str(gw.get("mac", "-")))
+        self.query_one("#lan-gw-oui", Label).update(str(gw.get("vendor", "-")))
+        dhcp = lan.get("dhcp") or {}
+        self.query_one("#lan-dhcp", Label).update(str(dhcp.get("server", "-")))
+        lease_s = dhcp.get("lease_time_s")
+        self.query_one("#lan-lease", Label).update(f"{lease_s / 3600:.1f} ore ({lease_s}s)" if lease_s else "-")
+        dns = lan.get("dns") or {}
+        srvs = dns.get("resolvers") or dns.get("nameservers") or []
+        self.query_one("#lan-dns", Label).update(", ".join(srvs) if srvs else "-")
+        time_ms = dns.get("local_resolution_time_ms")
+        self.query_one("#lan-dns-time", Label).update(f"{time_ms:.1f} ms" if time_ms is not None else "-")
+
+        tbl = self.query_one("#table-dnssec", DataTable)
+        tbl.clear()
+        dnssec = lan.get("dnssec") or {}
+        resolvers = dnssec.get("resolvers") or []
+        if not resolvers:
+            for s in srvs:
+                resolvers.append({"ip": s, "rdns": "-", "type": "Configurato", "status": "Non testato"})
+        for r in resolvers:
+            tbl.add_row(
+                str(r.get("ip") or "-"),
+                str(r.get("rdns") or "-"),
+                str(r.get("type") or "Configurato"),
+                str(r.get("status") or r.get("validation_status") or "-")
+            )
+
+
+class WanView(VerticalScroll):
+    """Scheda 3: Connessione Internet, Geointelligence WAN e Analisi NAT (STUN)."""
+    data = reactive(None)
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="card"):
+            yield Label("▶  CONNESSIONE INTERNET & GEOINTELLIGENCE WAN", classes="card-title")
+            yield _make_kv("Indirizzo IPv4 Pubblico", val_id="wan-ip4")
+            yield _make_kv("Indirizzo IPv6 Pubblico", val_id="wan-ip6")
+            yield _make_kv("Connettività Dual-Stack", val_id="wan-dualstack")
+            yield _make_kv("Reverse DNS (PTR Hostname)", val_id="wan-ptr")
+            yield _make_kv("Provider Internet (ISP)", val_id="wan-isp")
+            yield _make_kv("Autonomous System (ASN)", val_id="wan-asn")
+            yield _make_kv("Posizione Geografica", val_id="wan-geo")
+            yield _make_kv("Coordinate Lat / Lon", val_id="wan-coords")
+            yield _make_kv("Fuso Orario Rete", val_id="wan-tz")
+            yield _make_kv("Stato Privacy / VPN / Proxy", val_id="wan-privacy")
+            yield _make_kv("Path MTU Misurato (DF)", val_id="wan-pmtu")
+
+        with Container(classes="card"):
+            yield Label("▶  ANALISI NAT & SICUREZZA ROUTER (STUN RFC 5389)", classes="card-title")
+            yield _make_kv("Tipologia NAT Mappata", val_id="wan-nat-type")
+            yield _make_kv("Comportamento Mappatura", val_id="wan-nat-behavior")
+            yield _make_kv("Porta Esterna STUN Mappata", val_id="wan-nat-port")
+            yield _make_kv("Carrier-Grade NAT (CGNAT)", val_id="wan-cgnat")
+            yield _make_kv("UPnP IGD Router", val_id="wan-upnp")
+            yield _make_kv("NAT-PMP Router", val_id="wan-natpmp")
+
+    def on_mount(self):
+        self._update_display(self.data)
+
+    def watch_data(self, new_data):
+        if self.is_mounted:
+            self._update_display(new_data)
+
+    def _update_display(self, data):
+        if not data:
+            return
+        wan = data.get("wan") or {}
+        self.query_one("#wan-ip4", Label).update(str(wan.get("public_ipv4") or "Non rilevato"))
+        self.query_one("#wan-ip6", Label).update(str(wan.get("public_ipv6") or "Non Rilevato (IPv4-Only)"))
+        self.query_one("#wan-dualstack", Label).update("Attivo" if wan.get("dual_stack_enabled") else "Disabilitato / Non presente")
+        self.query_one("#wan-ptr", Label).update(str(wan.get("reverse_dns") or "-"))
+        self.query_one("#wan-isp", Label).update(str(wan.get("isp") or "-"))
+        self.query_one("#wan-asn", Label).update(f"{wan.get('asn', '-')} ({wan.get('org', '-')})")
+        geo_str = f"{wan.get('city', '-')}, {wan.get('region', '-')} - {wan.get('country', '-')}"
+        self.query_one("#wan-geo", Label).update(geo_str)
+        coords = wan.get("coordinates") or {}
+        c_lat, c_lon = coords.get("latitude"), coords.get("longitude")
+        self.query_one("#wan-coords", Label).update(f"{c_lat}, {c_lon}" if c_lat and c_lon else "-")
+        self.query_one("#wan-tz", Label).update(str(wan.get("timezone", "-")))
+        priv = wan.get("privacy_and_routing") or {}
+        self.query_one("#wan-privacy", Label).update(str(priv.get("type") or "Nessun indizio di VPN/proxy"))
+        ixp = data.get("ixp") or {}
+        pmtu = ixp.get("path_mtu")
+        self.query_one("#wan-pmtu", Label).update(f"{pmtu} bytes" if pmtu else "-")
+
+        nat = wan.get("nat") or {}
+        self.query_one("#wan-nat-type", Label).update(str(nat.get("nat_type") or "-"))
+        self.query_one("#wan-nat-behavior", Label).update(str(nat.get("mapping_behavior") or "-"))
+        self.query_one("#wan-nat-port", Label).update(str(nat.get("mapped_external_port") or "-"))
+        cgnat = "Rilevato (RFC 6598)" if nat.get("cgnat_detected") else "Non rilevato (IP pubblico)"
+        self.query_one("#wan-cgnat", Label).update(cgnat)
+        rs = wan.get("router_services") or {}
+        self.query_one("#wan-upnp", Label).update(str(rs.get("upnp_status_text") or "-"))
+        self.query_one("#wan-natpmp", Label).update(str(rs.get("nat_pmp_status_text") or "-"))
+
+
+class PerformanceView(VerticalScroll):
+    """Scheda 4: Matrice Latenza, Diagnosi Bufferbloat e Test di Velocità."""
+    data = reactive(None)
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="card"):
+            yield Label("▶  MATRICE DI LATENZA TARGET", classes="card-title")
+            table = DataTable(id="table-targets")
+            table.zebra_stripes = True
+            yield table
+
+        with Container(classes="card"):
+            yield Label("▶  DIAGNOSI BUFFERBLOAT SOTTO CARICO", classes="card-title")
+            yield _make_kv("Latenza a Riposo (Idle Baseline)", val_id="perf-bb-idle")
+            yield _make_kv("Latenza Sotto Carico Download", val_id="perf-bb-dl")
+            yield _make_kv("Latenza Sotto Carico Upload", val_id="perf-bb-ul")
+            yield _make_kv("Valutazione Grado Bufferbloat", val_id="perf-bb-grade", val_class="kv-val-green")
+            yield _make_kv("Diagnosi Coda Router", val_id="perf-bb-desc")
+
+        with Container(classes="card"):
+            yield Label("▶  TEST DI VELOCITÀ & THROUGHPUT STREAMING", classes="card-title")
+            yield _make_kv("Download (Regime Sostenuto)", val_id="perf-dl-mbps", val_class="kv-val-green")
+            yield _make_kv("Download (Picco / Stabilità)", val_id="perf-dl-peak")
+            yield _make_kv("Upload (Regime Sostenuto)", val_id="perf-ul-mbps", val_class="kv-val-green")
+            yield _make_kv("Upload (Picco / Stabilità)", val_id="perf-ul-peak")
+            yield _make_kv("Dati Totali Trasferiti / Durata", val_id="perf-data-transferred")
+            yield _make_kv("Server Speedtest Utilizzati", val_id="perf-servers")
+            yield _make_kv("Limite Loopback Tool (Interprete)", val_id="perf-ceiling")
+            yield _make_kv("Accounting Traffico Interfaccia", val_id="perf-accounting")
+
+    def on_mount(self):
+        tbl = self.query_one("#table-targets", DataTable)
+        tbl.add_columns("Target", "Host IP", "Tipo", "Min RTT (ms)", "Mediana (ms)", "Max RTT (ms)", "Jitter (ms)", "Loss (%)")
+        self._update_display(self.data)
+
+    def watch_data(self, new_data):
+        if self.is_mounted:
+            self._update_display(new_data)
+
+    def _update_display(self, data):
+        if not data:
+            return
+        perf = data.get("performance") or {}
+        targets = perf.get("latency_targets") or perf.get("targets") or {}
+        if not targets:
+            targets = {}
+            if perf.get("gateway_latency"):
+                targets["Gateway Locale"] = perf["gateway_latency"]
+            if perf.get("primary_latency"):
+                targets[perf["primary_latency"].get("name", "Primary Target")] = perf["primary_latency"]
+
+        tbl = self.query_one("#table-targets", DataTable)
+        tbl.clear()
+        for name, t in targets.items():
+            tbl.add_row(
+                name,
+                str(t.get("host") or "-"),
+                str(t.get("type") or "-"),
+                f"{t.get('min_ms', '-'):.2f}" if isinstance(t.get('min_ms'), (int, float)) else "-",
+                f"{t.get('median_ms', '-'):.2f}" if isinstance(t.get('median_ms'), (int, float)) else "-",
+                f"{t.get('max_ms', '-'):.2f}" if isinstance(t.get('max_ms'), (int, float)) else "-",
+                f"{t.get('jitter_ms', '-'):.2f}" if isinstance(t.get('jitter_ms'), (int, float)) else "-",
+                f"{t.get('packet_loss_pct', 0.0):.1f}%"
+            )
+
+        bb = perf.get("bufferbloat") or {}
+        self.query_one("#perf-bb-idle", Label).update(f"{bb.get('idle_latency_ms', '-')} ms" if bb.get("idle_latency_ms") else "-")
+        dl_d = bb.get("download_delta_ms")
+        self.query_one("#perf-bb-dl", Label).update(f"{bb.get('download_loaded_ms', '-')} ms (Delta: +{dl_d:.2f} ms)" if dl_d is not None else "-")
+        ul_d = bb.get("upload_delta_ms")
+        self.query_one("#perf-bb-ul", Label).update(f"{bb.get('upload_loaded_ms', '-')} ms (Delta: +{ul_d:.2f} ms)" if ul_d is not None else "-")
+        self.query_one("#perf-bb-grade", Label).update(f"Grado {bb.get('grade', 'N/D')}")
+        self.query_one("#perf-bb-desc", Label).update(str(bb.get("description") or "Scansione rapida o test non eseguito"))
+
+        speed = perf.get("speed") or {}
+        dl_m = speed.get("download_mbps")
+        ul_m = speed.get("upload_mbps")
+        self.query_one("#perf-dl-mbps", Label).update(f"{dl_m:.1f} Mbps" if dl_m is not None else "N/D (Scansione Rapida)")
+        dl_pk = speed.get("download_peak_mbps")
+        dl_st = speed.get("download_stability_pct")
+        self.query_one("#perf-dl-peak", Label).update(f"Picco: {dl_pk:.1f} Mbps | Stabilità: {dl_st:.1f}%" if dl_pk is not None else "-")
+        self.query_one("#perf-ul-mbps", Label).update(f"{ul_m:.1f} Mbps" if ul_m is not None else "N/D")
+        ul_pk = speed.get("upload_peak_mbps")
+        ul_st = speed.get("upload_stability_pct")
+        self.query_one("#perf-ul-peak", Label).update(f"Picco: {ul_pk:.1f} Mbps | Stabilità: {ul_st:.1f}%" if ul_pk is not None else "-")
+        b_tx = speed.get("bytes_transferred")
+        t_dur = speed.get("test_duration_s")
+        self.query_one("#perf-data-transferred", Label).update(f"{b_tx / (1024*1024):.1f} MB in {t_dur:.1f} s" if b_tx and t_dur else "-")
+        srvs = speed.get("servers_used") or []
+        self.query_one("#perf-servers", Label).update(", ".join(srvs) if srvs else "Cloudflare Anycast")
+        ceil = speed.get("tool_ceiling_mbps")
+        self.query_one("#perf-ceiling", Label).update(f"{ceil:.1f} Mbps" if ceil else "-")
+        ta = speed.get("traffic_accounting") or {}
+        if ta:
+            self.query_one("#perf-accounting", Label).update(f"Interfaccia: {ta.get('interface_bytes', 0)/(1024*1024):.1f} MB | Altri processi: {ta.get('other_traffic_bytes', 0)/(1024*1024):.1f} MB")
+        else:
+            self.query_one("#perf-accounting", Label).update("-")
+
+
+class MediumView(VerticalScroll):
+    """Scheda 5: Stima Mezzo Fisico, Modello Bayesiano, Hop 2 BNG e Access Profile."""
+    data = reactive(None)
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="card"):
+            yield Label("▶  CLASSIFICAZIONE FISICA DELL'ULTIMO MIGLIO", classes="card-title-emerald")
+            yield _make_kv("Mezzo Fisico Previsto", val_id="med-predicted", val_class="kv-val-green")
+            yield _make_kv("Indice di Confidenza Modello", val_id="med-conf")
+            yield _make_kv("Ripartizione Punteggi Tecnologie", val_id="med-scores")
+            yield Label("Evidenze e Contributi di Punteggio:", classes="sub-title")
+            yield Label("-", id="med-rationale", classes="rationale-bullet")
+
+        with Container(classes="card"):
+            yield Label("▶  PARAMETRI DI ACCESSO HOP 2 (BNG / FIRST HOP PROVIDER)", classes="card-title")
+            yield _make_kv("Indirizzo Gateway Operatore (BNG)", val_id="med-bng-ip")
+            yield _make_kv("Latenza Minima di Tratta (Min RTT)", val_id="med-bng-min")
+            yield _make_kv("Mediana / Coda p95 Salto", val_id="med-bng-med")
+            yield _make_kv("Jitter IPDV / Tail Variance", val_id="med-bng-jit")
+
+        with Container(classes="card"):
+            yield Label("▶  PROFILO LATENZA SALTO PER SALTO (ACCESS PROFILE)", classes="card-title")
+            table = DataTable(id="table-hops")
+            table.zebra_stripes = True
+            yield table
+
+        with Container(classes="card"):
+            yield Label("▶  BANDWIDTH-DELAY PRODUCT (BDP) & QUALITÀ VOCALE ITU-T", classes="card-title")
+            yield _make_kv("Bandwidth-Delay Product (BDP)", val_id="med-bdp-bytes")
+            yield _make_kv("Finestra TCP Consigliata", val_id="med-tcp-win")
+            yield _make_kv("Capacità Canale in Transito", val_id="med-bdp-desc")
+            yield _make_kv("Score Vocale ITU-T G.107 (MOS)", val_id="med-mos")
+            yield _make_kv("Fattore di Trasmissione (R-Factor)", val_id="med-rfac")
+
+    def on_mount(self):
+        tbl = self.query_one("#table-hops", DataTable)
+        tbl.add_columns("Salto", "Indirizzo IP", "Min RTT (ms)", "Mediana (ms)", "Delta Floor", "Ruolo Canonico", "Ruolo Fisico / Note")
+        self._update_display(self.data)
+
+    def watch_data(self, new_data):
+        if self.is_mounted:
+            self._update_display(new_data)
+
+    def _update_display(self, data):
+        if not data:
+            return
+        est = data.get("estimations") or {}
+        phys = est.get("physical_medium") or {}
+        self.query_one("#med-predicted", Label).update(str(phys.get("predicted_medium", "Indeterminato")))
+        conf = phys.get("confidence_pct", 0.0)
+        unattr = phys.get("unattributed_pct", 0.0)
+        self.query_one("#med-conf", Label).update(f"{conf:.1f}% (Quota Non Attribuita: {unattr:.1f}%)")
+
+        scores = phys.get("scores_breakdown") or {}
+        sc_parts = []
+        for k, v in scores.items():
+            short_k = k.split("(")[0].strip()
+            sc_parts.append(f"{short_k}: {v:.0f}")
+        self.query_one("#med-scores", Label).update(" | ".join(sc_parts) if sc_parts else "-")
+
+        rat = phys.get("rationale") or []
+        self.query_one("#med-rationale", Label).update("\n".join(f"• {r}" for r in rat) if rat else "Nessuna evidenza registrata")
+
+        ixp = data.get("ixp") or {}
+        bng = ixp.get("hop2_bng") or {}
+        self.query_one("#med-bng-ip", Label).update(str(bng.get("ip") or "Nessun hop BNG responsivo"))
+        min_ms = bng.get("min_ms")
+        self.query_one("#med-bng-min", Label).update(f"{min_ms:.2f} ms" if min_ms is not None else "-")
+        med_ms = bng.get("median_ms")
+        p95_ms = bng.get("p95_ms")
+        self.query_one("#med-bng-med", Label).update(f"Mediana: {med_ms:.2f} ms | p95: {p95_ms:.2f} ms" if med_ms is not None and p95_ms is not None else "-")
+        jit_ms = bng.get("jitter_ms")
+        tail_ms = bng.get("tail_variance_ms")
+        self.query_one("#med-bng-jit", Label).update(f"Jitter: {jit_ms:.2f} ms | Tail: {tail_ms:.2f} ms" if jit_ms is not None and tail_ms is not None else "-")
+
+        # Table Access Profile
+        tbl = self.query_one("#table-hops", DataTable)
+        tbl.clear()
+        acc = ixp.get("access_profile") or {}
+        hops = acc.get("hops") or ixp.get("traceroute_hops") or []
+        for h in hops:
+            h_num = str(h.get("hop", "-"))
+            ip_str = str(h.get("ip") or "*")
+            min_r = f"{h.get('min_ms', '-'):.2f}" if isinstance(h.get('min_ms'), (int, float)) else ("N/D" if ip_str == "*" else f"{h.get('rtt_ms'):.2f}" if h.get("rtt_ms") else "N/D")
+            med_r = f"{h.get('median_ms', '-'):.2f}" if isinstance(h.get('median_ms'), (int, float)) else "N/D"
+            df = h.get("floor_increment_ms")
+            df_str = f"+{df:.2f} ms" if isinstance(df, (int, float)) and df > 0 else ("~0.00 ms" if isinstance(df, (int, float)) else "N/D")
+            tbl.add_row(
+                h_num,
+                ip_str,
+                min_r,
+                med_r,
+                df_str,
+                str(h.get("role") or "-"),
+                str(h.get("role_note") or "-")
+            )
+
+        bdp = est.get("bandwidth_delay_product") or {}
+        b_bytes = bdp.get("bdp_bytes")
+        b_mb = bdp.get("bdp_mb")
+        self.query_one("#med-bdp-bytes", Label).update(f"{b_bytes} bytes ({b_mb} MB)" if b_bytes else "N/D (misura non valida)")
+        self.query_one("#med-tcp-win", Label).update(f"{bdp.get('recommended_tcp_window_kb')} KB" if bdp.get("recommended_tcp_window_kb") else "N/D")
+        self.query_one("#med-bdp-desc", Label).update(str(bdp.get("pipe_capacity_description") or "-"))
+
+        voice = est.get("voice_quality_mos") or {}
+        self.query_one("#med-mos", Label).update(f"{voice.get('mos_score', 'N/D')} / 4.5 ({voice.get('quality_rating', 'N/D')})")
+        self.query_one("#med-rfac", Label).update(f"{voice.get('r_factor', 'N/D')} / 100")
+
+
+class IxpView(VerticalScroll):
+    """Scheda 6: Intelligence IXP, Routing Ottico e Strutture PeeringDB."""
+    data = reactive(None)
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="card"):
+            yield Label("▶  INTELLIGENCE PEERING IXP & AS-BOUNDARY", classes="card-title")
+            yield _make_kv("Internet eXchange / Hub Peering", val_id="ixp-detected", val_class="kv-val-cyan")
+            yield _make_kv("Struttura / Campus IXP", val_id="ixp-facility")
+            yield _make_kv("Città IXP", val_id="ixp-city")
+            yield _make_kv("Tipologia Interconnessione", val_id="ixp-type")
+            yield _make_kv("Metodo di Identificazione", val_id="ixp-method")
+            yield _make_kv("PoP Anycast Rilevato (Cloudflare)", val_id="ixp-colo")
+            yield _make_kv("Interfaccia Peering / Egress (Hop IP)", val_id="ixp-egress")
+
+        with Container(classes="card"):
+            yield Label("▶  EFFICIENZA DI ROUTING OTTICO & FIBRA", classes="card-title")
+            yield _make_kv("Distanza Geodetica Ortodromica", val_id="ixp-dist")
+            yield _make_kv("Tratta Fibra Ottica Stimata", val_id="ixp-fiber")
+            yield _make_kv("Latenza Luce in Fibra (Minimo Fisico)", val_id="ixp-light")
+            yield _make_kv("RTT Tratta Misurato", val_id="ixp-rtt-meas")
+            yield _make_kv("Indice di Efficienza di Routing", val_id="ixp-eff", val_class="kv-val-green")
+            yield _make_kv("Valutazione Detour di Peering", val_id="ixp-detour")
+            yield _make_kv("Base di Calcolo Efficienza", val_id="ixp-calc-basis")
+            yield _make_kv("Ritardo di Accodamento & Switch", val_id="ixp-delay")
+
+        with Container(classes="card"):
+            yield Label("▶  STRUTTURE DI PEERING OPERATORE (PEERINGDB)", classes="card-title")
+            table = DataTable(id="table-peeringdb")
+            table.zebra_stripes = True
+            yield table
+
+    def on_mount(self):
+        tbl = self.query_one("#table-peeringdb", DataTable)
+        tbl.add_columns("Struttura / Hub Peering", "Città", "Paese")
+        self._update_display(self.data)
+
+    def watch_data(self, new_data):
+        if self.is_mounted:
+            self._update_display(new_data)
+
+    def _update_display(self, data):
+        if not data:
+            return
+        ixp = data.get("ixp") or {}
+        self.query_one("#ixp-detected", Label).update(str(ixp.get("detected_ixp") or "Non identificato"))
+        self.query_one("#ixp-facility", Label).update(str(ixp.get("ixp_facility") or "-"))
+        self.query_one("#ixp-city", Label).update(str(ixp.get("ixp_city") or "-"))
+        self.query_one("#ixp-type", Label).update(str(ixp.get("peering_type") or "-"))
+        self.query_one("#ixp-method", Label).update(f"{ixp.get('detection_method', '-')} (Confidenza: {ixp.get('confidence', '-')})")
+        self.query_one("#ixp-colo", Label).update(str(ixp.get("anycast_colo") or "-"))
+        self.query_one("#ixp-egress", Label).update(str(ixp.get("matched_hop_ip") or "-"))
+
+        est = data.get("estimations") or {}
+        opt = est.get("optical_routing") or {}
+        d_km = opt.get("straight_line_distance_km")
+        self.query_one("#ixp-dist", Label).update(f"~{d_km:.1f} km" if d_km is not None else "-")
+        f_km = opt.get("estimated_fiber_path_km")
+        self.query_one("#ixp-fiber", Label).update(f"~{f_km:.1f} km (con detour 1.35x)" if f_km is not None else "-")
+        l_ms = opt.get("theoretical_optical_min_rtt_ms")
+        self.query_one("#ixp-light", Label).update(f"{l_ms:.2f} ms" if l_ms is not None else "-")
+        m_ms = opt.get("measured_rtt_ms")
+        self.query_one("#ixp-rtt-meas", Label).update(f"{m_ms:.2f} ms" if m_ms is not None else "-")
+        eff = opt.get("routing_efficiency_pct")
+        self.query_one("#ixp-eff", Label).update(f"{eff:.1f}%" if eff is not None else "Non applicabile")
+        self.query_one("#ixp-detour", Label).update(str(opt.get("detour_rating") or "-"))
+        self.query_one("#ixp-calc-basis", Label).update(str(opt.get("calculation_basis") or "-"))
+        delay = opt.get("switching_and_queuing_delay_ms")
+        self.query_one("#ixp-delay", Label).update(f"{delay:.2f} ms" if delay is not None else "-")
+
+        tbl = self.query_one("#table-peeringdb", DataTable)
+        tbl.clear()
+        facs = ixp.get("peeringdb_facilities") or []
+        if not facs:
+            wan_asn = str((data.get("wan") or {}).get("asn") or "")
+            clean_asn = "".join(c for c in wan_asn if c.isdigit())
+            from core.ixp_analyzer import EMBEDDED_ASN_PEERING_HUBS
+            if clean_asn and int(clean_asn) in EMBEDDED_ASN_PEERING_HUBS:
+                facs = EMBEDDED_ASN_PEERING_HUBS[int(clean_asn)]
+
+        if facs:
+            for fac in facs:
+                tbl.add_row(
+                    str(fac.get("name") or "-"),
+                    str(fac.get("city") or "-"),
+                    str(fac.get("country") or "Italia")
+                )
+        else:
+            tbl.add_row("Nessuna struttura PeeringDB", "-", "-")
+
+
+class DevicesView(VerticalScroll):
+    """Scheda 7: Dispositivi rilevati nella LAN (ARP, mDNS, UPnP, DHCP)."""
+    data = reactive(None)
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="card"):
+            yield Label("▶  QUESTO DISPOSITIVO (HOST LOCALE)", classes="card-title")
+            yield _make_kv("Indirizzo IPv4 Locale", val_id="dev-this-ip")
+            yield _make_kv("Indirizzo MAC", val_id="dev-this-mac")
+            yield _make_kv("Produttore Hardware (OUI)", val_id="dev-this-vendor")
+            yield _make_kv("Nome Host Locale", val_id="dev-this-host")
+
+        with Container(classes="card"):
+            yield Label("▶  DISPOSITIVI RILEVATI NELLA RETE LAN", classes="card-title")
+            yield Label("-", id="dev-total-label", classes="hero-subtitle")
+            table = DataTable(id="table-devices")
+            table.zebra_stripes = True
+            yield table
+
+    def on_mount(self):
+        tbl = self.query_one("#table-devices", DataTable)
+        tbl.add_columns("Indirizzo IP", "MAC Address", "Produttore Hardware (OUI)", "Nome Host / mDNS", "Fonti Discovery", "Indirizzi IPv6")
+        self._update_display(self.data)
+
+    def watch_data(self, new_data):
+        if self.is_mounted:
+            self._update_display(new_data)
+
+    def _update_display(self, data):
+        if not data:
+            return
+        lan = data.get("lan") or {}
+        td = lan.get("this_device") or {}
+        self.query_one("#dev-this-ip", Label).update(str(td.get("ip") or "-"))
+        self.query_one("#dev-this-mac", Label).update(str(td.get("mac") or "-"))
+        self.query_one("#dev-this-vendor", Label).update(str(td.get("vendor") or "-"))
+        self.query_one("#dev-this-host", Label).update(str(td.get("hostname") or "-"))
+
+        devs = lan.get("lan_devices") or []
+        self.query_one("#dev-total-label", Label).update(f"Totale Dispositivi Rilevati nella LAN: {len(devs)} host attivi")
+        tbl = self.query_one("#table-devices", DataTable)
+        tbl.clear()
+        for d in devs:
+            ipv6_str = ", ".join(d.get("ipv6_addresses") or []) if d.get("ipv6_addresses") else "-"
+            tbl.add_row(
+                str(d.get("ip") or "-"),
+                str(d.get("mac") or "-"),
+                str(d.get("vendor") or "N/D"),
+                str(d.get("hostname") or "-"),
+                str(d.get("how_found") or "-"),
+                ipv6_str
+            )
+

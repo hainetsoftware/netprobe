@@ -1,8 +1,8 @@
 """
-Modulo TUI (Terminal User Interface) interattiva per NetProbe.
-Fornisce una dashboard a schermo intero navigabile da tastiera con zero dipendenze esterne.
+Modulo TUI (Terminal User Interface) interattiva per NetProbe Pro.
+Fornisce una dashboard moderna Textual a schermo intero con layout responsive e reactive state.
 """
 
-from tui.app import start_tui
+from tui.app import NetProbeTUIApp, start_tui
 
-__all__ = ["start_tui"]
+__all__ = ["NetProbeTUIApp", "start_tui"]

@@ -17,6 +17,7 @@ Funzionalità:
 import math
 import os
 import sys
+import subprocess
 import re
 import json
 import time
@@ -914,10 +915,154 @@ class IXPAnalyzer:
 
         return hops
 
+    def _icmp_ttl_stepping_traceroute(self, target: str, max_hops: int = 20) -> List[Dict[str, Any]]:
+        """
+        Fallback traceroute non-privilegiato (userspace e zero root) tramite loop di TTL stepping ICMP.
+        Invia pacchetti ping incrementando il TTL da 1 a max_hops (max 20).
+        Si arresta al raggiungimento dell'IP target o dopo 3 hop consecutivi non responsivi oltre l'hop 3.
+        """
+        hops = []
+        consec_silent = 0
+        use_m_flag = is_macos()
+        reply_re = re.compile(r"(?:bytes from|From|Reply from)\s+(?:[^\s(]+\s+\()?([0-9\.]+)", re.IGNORECASE)
+        time_re = re.compile(r"time[=<]\s*(\d+(?:\.\d+)?)\s*ms", re.IGNORECASE)
+
+        for ttl in range(1, max_hops + 1):
+            t0 = time.perf_counter()
+            if is_windows():
+                cmd = ["ping", "-n", "1", "-w", "800", "-i", str(ttl), target]
+            elif is_macos():
+                if use_m_flag:
+                    cmd = ["ping", "-n", "-c", "1", "-m", str(ttl), "-W", "500", "-t", "1", target]
+                else:
+                    cmd = ["ping", "-n", "-c", "1", "-t", str(ttl), "-W", "500", target]
+            else:  # Linux iputils
+                cmd = ["ping", "-n", "-c", "1", "-t", str(ttl), "-W", "1", target]
+
+            proc = None
+            router_ip = None
+            rtt_val = None
+            raw_buf = ""
+
+            if is_windows():
+                try:
+                    c, out, _ = run_cmd(cmd, timeout=1.0)
+                    m = reply_re.search(out)
+                    if m:
+                        cand_ip = m.group(1).rstrip(":")
+                        try:
+                            ipaddress.ip_address(cand_ip)
+                            router_ip = cand_ip
+                            tm = time_re.search(out)
+                            if tm:
+                                rtt_val = round(float(tm.group(1)), 2)
+                        except ValueError:
+                            pass
+                except Exception:
+                    pass
+            else:
+                try:
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT
+                    )
+                    fd = proc.stdout.fileno()
+                    has_sb = False
+                    if hasattr(os, "set_blocking"):
+                        try:
+                            os.set_blocking(fd, False)
+                            has_sb = True
+                        except Exception:
+                            has_sb = False
+
+                    start_wait = time.perf_counter()
+                    timeout_hop = 0.35  # max 350ms per hop non responsivo
+
+                    while (time.perf_counter() - start_wait) < timeout_hop:
+                        chunk = b""
+                        if has_sb:
+                            try:
+                                chunk = os.read(fd, 4096)
+                            except (BlockingIOError, InterruptedError):
+                                pass
+                        else:
+                            if proc.poll() is not None:
+                                chunk = proc.stdout.read()
+
+                        if chunk:
+                            raw_buf += chunk.decode("utf-8", "replace")
+                            if is_macos() and use_m_flag and ("illegal option" in raw_buf.lower() or "usage:" in raw_buf.lower()):
+                                use_m_flag = False
+                                break
+
+                            m = reply_re.search(raw_buf)
+                            if m:
+                                cand_ip = m.group(1).rstrip(":")
+                                try:
+                                    ipaddress.ip_address(cand_ip)
+                                    router_ip = cand_ip
+                                    tm = time_re.search(raw_buf)
+                                    if tm:
+                                        rtt_val = round(float(tm.group(1)), 2)
+                                    break
+                                except ValueError:
+                                    pass
+                        time.sleep(0.005)
+                except Exception:
+                    pass
+                finally:
+                    if proc:
+                        try:
+                            if proc.stdout:
+                                proc.stdout.close()
+                        except Exception:
+                            pass
+                        try:
+                            proc.terminate()
+                            proc.wait(timeout=0.05)
+                        except Exception:
+                            try:
+                                proc.kill()
+                                proc.wait(timeout=0.05)
+                            except Exception:
+                                pass
+
+            dt = round((time.perf_counter() - t0) * 1000.0, 2)
+            if rtt_val is None:
+                rtt_val = dt
+
+            if router_ip:
+                consec_silent = 0
+                hops.append({
+                    "hop": ttl,
+                    "ip": router_ip,
+                    "ips": [router_ip],
+                    "rtts": [rtt_val],
+                    "rtt_ms": rtt_val
+                })
+                if router_ip == target:
+                    break
+            else:
+                hops.append({
+                    "hop": ttl,
+                    "ip": "*",
+                    "ips": [],
+                    "rtts": [],
+                    "rtt_ms": None
+                })
+                if ttl > 3:
+                    consec_silent += 1
+                    if consec_silent >= 3:
+                        break
+
+        return hops
+
     def measure_access_profile(self, target: str = "1.1.1.1", max_hops: int = 10, probes: int = 8) -> Dict[str, Any]:
         """
-        Esegue un traceroute rootless multi-probe (default 8 sonde per hop, max 10 hop)
-        per costruire il profilo di latenza salto per salto.
+        Esegue un traceroute rootless multi-probe con waterfall a 2 stadi:
+        1. Primario: traceroute di sistema (/usr/sbin/traceroute con verifica TCP probe senza root su macOS)
+        2. Fallback: ICMP TTL-stepping rapido tramite ping se il primario restituisce 0 hop o timeout <= 3s.
         """
         if os.environ.get("NETPROBE_SPEED_HOST"):
             return {
@@ -930,15 +1075,32 @@ class IXPAnalyzer:
                 "first_hop_rtt_min_ms": None,
                 "isp_core_ingress_hop": None
             }
+
+        tcp_permitted = False
+        if is_macos():
+            c, t_out, t_err = run_cmd(["traceroute", "-P", "TCP", "-p", "80", "-n", "-m", "1", "-w", "1", target], timeout=1.0)
+            if c == 0 and "pcap_activate" not in t_out and "pcap_activate" not in t_err:
+                tcp_permitted = True
+
         if is_windows():
             cmd = ["tracert", "-d", "-h", str(max_hops), "-w", "800", target]
         elif is_macos():
-            cmd = ["traceroute", "-n", "-m", str(max_hops), "-q", str(probes), "-w", "1", target]
+            if tcp_permitted:
+                cmd = ["traceroute", "-P", "TCP", "-p", "80", "-n", "-m", str(max_hops), "-q", str(probes), "-w", "1", target]
+            else:
+                cmd = ["traceroute", "-n", "-m", str(max_hops), "-q", str(probes), "-w", "1", target]
         else:  # Linux
             cmd = ["traceroute", "-n", "-m", str(max_hops), "-q", str(probes), "-w", "1", target]
 
-        code, out, _ = run_cmd(cmd, timeout=30.0)
+        code, out, _ = run_cmd(cmd, timeout=3.0)
         parsed_hops = self._parse_multiprobe_traceroute(out)
+        responsive = [h for h in parsed_hops if h.get("ip") and h.get("ip") != "*"]
+
+        # Se il traceroute standard ha fallito (firewall UDP o timeout <= 3s), attiva il fallback ICMP TTL-stepping
+        if not responsive:
+            parsed_hops = self._icmp_ttl_stepping_traceroute(target, max_hops=min(max_hops, 20))
+            out = "\n".join(f" {h['hop']}  {h['ip']}  {h.get('rtt_ms') or '*'} ms" for h in parsed_hops)
+
         profile = build_access_profile_from_hops(parsed_hops, target=target)
         profile["target"] = target
         profile["raw"] = out
@@ -947,15 +1109,24 @@ class IXPAnalyzer:
     def run_traceroute(self, target: str, max_hops: int = 16) -> Dict[str, Any]:
         """
         Esegue un traceroute verso il target.
-        Cross-platform: non richiede privilegi di root.
+        Cross-platform con waterfall a 2 stadi: non richiede privilegi di root.
         """
         hops = []
         raw_output = ""
 
+        tcp_permitted = False
+        if is_macos():
+            c, t_out, t_err = run_cmd(["traceroute", "-P", "TCP", "-p", "80", "-n", "-m", "1", "-w", "1", target], timeout=1.0)
+            if c == 0 and "pcap_activate" not in t_out and "pcap_activate" not in t_err:
+                tcp_permitted = True
+
         if is_windows():
             cmd = ["tracert", "-d", "-h", str(max_hops), "-w", "800", target]
         elif is_macos():
-            cmd = ["traceroute", "-n", "-m", str(max_hops), "-q", "1", "-w", "1", target]
+            if tcp_permitted:
+                cmd = ["traceroute", "-P", "TCP", "-p", "80", "-n", "-m", str(max_hops), "-q", "1", "-w", "1", target]
+            else:
+                cmd = ["traceroute", "-n", "-m", str(max_hops), "-q", "1", "-w", "1", target]
         else:  # Linux
             cmd = ["traceroute", "-n", "-m", str(max_hops), "-q", "1", "-w", "1", target]
             # Se traceroute non c'è, tenta tracepath
@@ -963,7 +1134,7 @@ class IXPAnalyzer:
             if code != 0:
                 cmd = ["tracepath", "-n", "-m", str(max_hops), target]
 
-        code, out, _ = run_cmd(cmd)
+        code, out, _ = run_cmd(cmd, timeout=3.0)
         raw_output = out
 
         # Parsing output riga per riga
@@ -1013,6 +1184,29 @@ class IXPAnalyzer:
                 "rtt_ms": rtt_val,
                 "rdns": rdns_val
             })
+
+        responsive = [h for h in hops if h.get("ip") and h.get("ip") != "*"]
+        if not responsive:
+            # Fallback ICMP TTL-stepping
+            ttl_hops = self._icmp_ttl_stepping_traceroute(target, max_hops=min(max_hops, 20))
+            hops = []
+            for th in ttl_hops:
+                ip_str = th.get("ip", "*")
+                rdns_val = None
+                if ip_str != "*" and not ip_str.startswith("10.") and not ip_str.startswith("192.168."):
+                    try:
+                        rdns_val = socket.getnameinfo((ip_str, 0), 0)[0]
+                        if rdns_val == ip_str:
+                            rdns_val = None
+                    except Exception:
+                        rdns_val = None
+                hops.append({
+                    "hop": th["hop"],
+                    "ip": ip_str,
+                    "rtt_ms": th.get("rtt_ms"),
+                    "rdns": rdns_val
+                })
+            raw_output = "\n".join(f" {h['hop']}  {h['ip']}  {h.get('rtt_ms') or '*'} ms" for h in hops)
 
         return {"target": target, "hops": hops, "raw": raw_output}
 

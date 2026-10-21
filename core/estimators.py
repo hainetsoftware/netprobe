@@ -794,7 +794,12 @@ class NetworkEstimator:
                 mq_reasons.append(ev["detail"])
 
         is_tp_noisy = any(e.get("kind") in ("throughput_dip", "traffic_accounting", "throughput_stability") for e in noise_events)
-        is_lat_noisy = any(e.get("kind") in ("latency_spike", "latency_iqr", "latency_tail") for e in noise_events)
+        is_lat_noisy = any(
+            e.get("kind") in ("latency_spike", "latency_iqr", "latency_tail")
+            and e.get("target") != "Gateway Locale"
+            and targets.get(e.get("target", ""), {}).get("type") != "lan"
+            for e in noise_events
+        )
         is_noisy = len(noise_events) > 0
 
         bb = perf_data.get("bufferbloat") or {}
@@ -1016,6 +1021,45 @@ class NetworkEstimator:
         medium = (medium_name or "")
         medium_lower = medium.lower()
         is_radio_or_sat = any(k in medium_lower for k in ("mobile", "cellular", "4g", "5g", "hotspot", "fwa", "eolo", "linkem", "satellite", "starlink", "geo", "leo"))
+        is_wired = any(k in medium_lower for k in ("ftth", "fttc", "adsl", "vdsl", "rame", "fibra", "ethernet")) or (not is_radio_or_sat and not is_vpn)
+
+        anycast_colo = (ixp_data or {}).get("anycast_colo") or wan_data.get("colo") or (wan_data.get("cloudflare_trace") or {}).get("colo")
+        colo_cand = str(anycast_colo or "").strip().upper()
+
+        colo_hub_map = {
+            "MXP": ("Milano", "Milano (Hub Caldera / MIX) - Interconnessione PNI / Transit", "Campus Caldera, Via Caldera 21", (45.4642, 9.1028)),
+            "MIL": ("Milano", "Milano (Hub Caldera / MIX) - Interconnessione PNI / Transit", "Campus Caldera, Via Caldera 21", (45.4642, 9.1028)),
+            "FCO": ("Roma", "Roma (Hub NaMeX) - Interconnessione PNI / Transit", "Roma NaMeX", (41.8988, 12.5186)),
+            "ROM": ("Roma", "Roma (Hub NaMeX) - Interconnessione PNI / Transit", "Roma NaMeX", (41.8988, 12.5186)),
+            "TRN": ("Torino", "Torino (Hub TOP-IX) - Interconnessione PNI / Transit", "TOP-IX", (45.0392, 7.6496)),
+            "FLR": ("Firenze", "Firenze (Hub TIX) - Interconnessione PNI / Transit", "TIX", (43.7696, 11.2558)),
+            "FRA": ("Francoforte", "Francoforte (Hub DE-CIX) - Interconnessione PNI / Transit", "DE-CIX", (50.1109, 8.6821)),
+            "CDG": ("Parigi", "Parigi (Hub France-IX) - Interconnessione PNI / Transit", "France-IX", (48.8566, 2.3522)),
+            "AMS": ("Amsterdam", "Amsterdam (Hub AMS-IX) - Interconnessione PNI / Transit", "AMS-IX", (52.3702, 4.8952)),
+            "LHR": ("Londra", "Londra (Hub LINX) - Interconnessione PNI / Transit", "LINX", (51.5074, -0.1278)),
+        }
+
+        # Fallback Optical Routing via Anycast PoP verificato quando i salti intermedi sono filtrati da firewall
+        anycast_fallback_used = False
+        if is_unidentified and is_wired and geo_ok and colo_cand in colo_hub_map:
+            h_city, h_name, h_fac, h_coords = colo_hub_map[colo_cand]
+            ixp_city = h_city
+            ixp_name = h_name
+            ixp_facility = h_fac
+            ixp_lat, ixp_lon = h_coords
+            peering_type = peering_type or "Direct PNI / Transit Handoff"
+            straight_dist_km = self._haversine_distance(user_lat, user_lon, ixp_lat, ixp_lon)
+            optical_min_rtt_ms = (2.0 * straight_dist_km / self.SPEED_OF_LIGHT_IN_FIBER_KM_S) * 1000.0
+            estimated_fiber_km = round(straight_dist_km * 1.35, 1)
+            fiber_floor_ms = (2.0 * straight_dist_km * 1.35 / self.SPEED_OF_LIGHT_IN_FIBER_KM_S) * 1000.0
+
+            prim_lat = perf_data.get("primary_latency", {})
+            prim_min = prim_lat.get("min_ms") or prim_lat.get("median_ms") or hub_rtt_ms
+            net_edge_rtt = round(max(0.1, (prim_min or 15.0) - (gateway_min_ms or 0.0)), 2)
+            measured_rtt_ms = net_edge_rtt
+            hub_rtt_ms = net_edge_rtt
+            is_unidentified = False
+            anycast_fallback_used = True
 
         if not geo_ok:
             na_reason = "Coordinate WAN non disponibili"
@@ -1035,7 +1079,10 @@ class NetworkEstimator:
         calculation_basis = None
         denominator = None
 
-        if na_reason is None and hub_rtt_ms is not None and fiber_floor_ms is not None:
+        if anycast_fallback_used:
+            denominator = round(hub_rtt_ms, 2)
+            calculation_basis = f"Anycast PoP verificato (colo={colo_cand}) su RTT edge netto"
+        elif na_reason is None and hub_rtt_ms is not None and fiber_floor_ms is not None:
             acc_prof = (ixp_data or {}).get("access_profile")
             if acc_prof and acc_prof.get("hops") is not None:
                 hops = acc_prof.get("hops") or []

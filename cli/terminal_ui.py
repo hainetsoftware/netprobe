@@ -207,8 +207,8 @@ class TerminalUI:
                 st = r.get("status", "inconclusivo")
                 if st == "validante":
                     res_parts.append(f"{self.BRIGHT_GREEN}{r['ip']}: validante{self.RESET}")
-                elif st == "non validante":
-                    res_parts.append(f"{self.YELLOW}{r['ip']}: non validante{self.RESET}")
+                elif "non validante" in st.lower():
+                    res_parts.append(f"{self.YELLOW}{r['ip']}: {st}{self.RESET}")
                 else:
                     res_parts.append(f"{self.DIM}{r['ip']}: inconclusivo{self.RESET}")
             self.print_kv("Convalida Crittografica DNSSEC", " | ".join(res_parts))

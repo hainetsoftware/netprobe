@@ -203,6 +203,110 @@ class TestTUIViews(unittest.TestCase):
         self.assertIn("+4.70 ms", all_text)
 
 
+class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
+    @classmethod
+    def setUpClass(cls):
+        fixtures_dir = os.path.join(os.path.dirname(__file__), "fixtures")
+        eth_path = os.path.join(fixtures_dir, "real_ethernet_run1.json")
+        with open(eth_path, "r", encoding="utf-8") as f:
+            cls.eth_data = json.load(f)
+
+    async def test_tui_empty_launch(self):
+        """Verifica che la TUI si avvii in stato pronto senza avviare scansioni automaticamente."""
+        from tui.app import NetProbeTUIApp
+        from textual.widgets import TabbedContent, Label, Button
+
+        app = NetProbeTUIApp(initial_data=None, auto_scan=False)
+        async with app.run_test() as pilot:
+            tc = app.query_one(TabbedContent)
+            self.assertEqual(tc.active, "tab-dashboard")
+
+            empty_lbl = app.query_one("#empty-state-title", Label)
+            self.assertIn("PRONTO", str(empty_lbl.render()))
+
+            btn_full = app.query_one("#btn-full", Button)
+            self.assertFalse(btn_full.disabled)
+
+    async def test_tui_tab_navigation(self):
+        """Verifica la navigazione rapida tra tutte le 7 schede della TUI."""
+        from tui.app import NetProbeTUIApp
+        from textual.widgets import TabbedContent
+
+        app = NetProbeTUIApp(initial_data=self.eth_data, auto_scan=False)
+        async with app.run_test() as pilot:
+            tc = app.query_one(TabbedContent)
+            self.assertEqual(tc.active, "tab-dashboard")
+
+            app.action_tab_2()
+            await pilot.pause()
+            self.assertEqual(tc.active, "tab-lan")
+
+            app.action_tab_3()
+            await pilot.pause()
+            self.assertEqual(tc.active, "tab-wan")
+
+            app.action_tab_4()
+            await pilot.pause()
+            self.assertEqual(tc.active, "tab-performance")
+
+            app.action_tab_5()
+            await pilot.pause()
+            self.assertEqual(tc.active, "tab-medium")
+
+            app.action_tab_6()
+            await pilot.pause()
+            self.assertEqual(tc.active, "tab-ixp")
+
+            app.action_tab_7()
+            await pilot.pause()
+            self.assertEqual(tc.active, "tab-devices")
+
+    async def test_tui_data_population(self):
+        """Verifica che i dati della scansione popolino metriche e tutte le 5 DataTable."""
+        from tui.app import NetProbeTUIApp
+        from textual.widgets import DataTable, Label
+
+        app = NetProbeTUIApp(initial_data=self.eth_data, auto_scan=False)
+        async with app.run_test() as pilot:
+            # Dashboard
+            med_lbl = app.query_one("#dash-medium-title", Label)
+            self.assertIn("Fibra", str(med_lbl.render()))
+
+            # DataTables
+            t_dnssec = app.query_one("#table-dnssec", DataTable)
+            self.assertGreaterEqual(t_dnssec.row_count, 1)
+
+            t_targets = app.query_one("#table-targets", DataTable)
+            self.assertGreaterEqual(t_targets.row_count, 1)
+
+            t_hops = app.query_one("#table-hops", DataTable)
+            self.assertGreaterEqual(t_hops.row_count, 1)
+
+            t_peering = app.query_one("#table-peeringdb", DataTable)
+            self.assertGreaterEqual(t_peering.row_count, 1)
+
+            t_devs = app.query_one("#table-devices", DataTable)
+            self.assertGreaterEqual(t_devs.row_count, 1)
+
+    async def test_tui_export_report(self):
+        """Verifica che l'azione di esportazione generi il file JSON corretto."""
+        from tui.app import NetProbeTUIApp
+        import glob
+
+        app = NetProbeTUIApp(initial_data=self.eth_data, auto_scan=False)
+        async with app.run_test() as pilot:
+            app.action_export_report()
+            await pilot.pause()
+
+            exported_files = glob.glob("netprobe_report_*.json")
+            self.assertGreater(len(exported_files), 0)
+            for f in exported_files:
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
+
+
 if __name__ == "__main__":
     unittest.main()
 

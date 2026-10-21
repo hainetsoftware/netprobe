@@ -444,10 +444,35 @@ class PerformanceTester:
                 except Exception:
                     pass
 
-            if progress_cb:
-                progress_cb("Esecuzione test Download streaming continuo...", 35)
+            custom_host = getattr(self, "speed_host", self.SPEED_HOST)
+            custom_port = getattr(self, "speed_port", 443)
+            custom_scheme = getattr(self, "speed_scheme", "https")
+            is_custom = bool(
+                os.environ.get("NETPROBE_SPEED_HOST")
+                or (custom_host != self.SPEED_HOST)
+                or (custom_port != 443)
+                or (custom_scheme != "https")
+            )
 
-            # Test Download (Cloudflare) con pinger sul target allineato
+            primary_ep = None
+            secondary_ep = None
+            if not is_custom:
+                if progress_cb:
+                    progress_cb("Verifica pre-flight latenza e selezione endpoint...", 32)
+                primary_ep, secondary_ep = self.select_best_endpoints(timeout_s=0.4)
+                self.speed_host = primary_ep["host"]
+                self.speed_port = primary_ep["port"]
+                self.speed_scheme = primary_ep["scheme"]
+                self.speed_path = primary_ep.get("path", "/__down?bytes=5000000")
+                self.speed_is_dynamic = primary_ep.get("is_dynamic", False)
+                self.speed_endpoint_name = primary_ep.get("name", self.speed_host)
+            else:
+                self.speed_endpoint_name = getattr(self, "speed_endpoint_name", self.speed_host)
+
+            if progress_cb:
+                progress_cb(f"Esecuzione test Download streaming ({self.speed_endpoint_name})...", 35)
+
+            # Test Download con pinger sul target allineato
             loaded_target_host = best_target_data.get("host") or "1.1.1.1"
             stream_dur = getattr(self, "stream_duration", 8.0)
             dl_res, dl_loaded_rtt = self.measure_download_stream(
@@ -458,8 +483,10 @@ class PerformanceTester:
                 live_cb=(lambda t, m: progress_cb('Download', 35 + int(t / stream_dur * 30), live={'dir': 'down', 'mbps': m}) if progress_cb else None)
             )
 
-            # Verifica secondo endpoint indipendente (OVH)
-            ovh_data = self._measure_secondary_endpoint()
+            # Verifica secondo endpoint indipendente ad alta capacità per verifica incrociata
+            sec_data = None
+            if not is_custom and dl_res.get("valid"):
+                sec_data = self._measure_secondary_endpoint(endpoint=secondary_ep)
             main_server = getattr(self, "speed_host", self.SPEED_HOST)
             servers_used = [main_server]
             server_details = {
@@ -474,22 +501,23 @@ class PerformanceTester:
             headline_dl = dl_mbps
 
             cf_steady = compute_steady_state(dl_res.get("samples"), dl_res.get("sustained_mbps"), dl_res.get("peak_mbps"))
-            if ovh_data and dl_mbps:
-                servers_used.append("proof.ovh.net")
-                ovh_sust = ovh_data.get("sustained_mbps")
-                ovh_peak = ovh_data.get("peak_mbps")
-                server_details["proof.ovh.net"] = {
-                    "download_sustained_mbps": ovh_sust,
-                    "download_peak_mbps": ovh_peak
+            if sec_data and dl_mbps:
+                sec_host = sec_data.get("server", "secondary_endpoint")
+                servers_used.append(sec_host)
+                sec_sust = sec_data.get("sustained_mbps")
+                sec_peak = sec_data.get("peak_mbps")
+                server_details[sec_host] = {
+                    "download_sustained_mbps": sec_sust,
+                    "download_peak_mbps": sec_peak
                 }
-                ovh_steady = compute_steady_state(ovh_data.get("samples"), ovh_sust, ovh_peak)
-                if cf_steady and ovh_steady:
-                    diff = abs(cf_steady - ovh_steady) / max(cf_steady, ovh_steady)
+                sec_steady = compute_steady_state(sec_data.get("samples"), sec_sust, sec_peak)
+                if cf_steady and sec_steady:
+                    diff = abs(cf_steady - sec_steady) / max(cf_steady, sec_steady)
                 else:
-                    diff = abs(dl_mbps - ovh_sust) / max(dl_mbps, ovh_sust)
+                    diff = abs(dl_mbps - sec_sust) / max(dl_mbps, sec_sust)
                 endpoints_agree = bool(diff <= 0.10)  # Concordanti se steady-state entro 10%
-                if ovh_sust and ovh_sust > headline_dl:
-                    headline_dl = ovh_sust
+                if sec_sust and sec_sust > headline_dl:
+                    headline_dl = sec_sust
 
             probable_limit = "indeterminato" if len(servers_used) < 2 else "linea"
             if tool_ceiling and headline_dl and (headline_dl > (0.5 * tool_ceiling)):
@@ -796,6 +824,122 @@ class PerformanceTester:
     # ------------------------------------------------------------------
     SPEED_HOST = "speed.cloudflare.com"
 
+    CANDIDATE_DOWNLOAD_ENDPOINTS = [
+        {
+            "name": "Cloudflare Anycast",
+            "url": "https://speed.cloudflare.com/__down?bytes=5000000",
+            "probe_url": "https://speed.cloudflare.com/__down?bytes=131072",
+            "host": "speed.cloudflare.com",
+            "port": 443,
+            "path": "/__down?bytes=5000000",
+            "scheme": "https",
+            "is_dynamic": True
+        },
+        {
+            "name": "Hetzner NBG1 (10G/100G DE)",
+            "url": "https://nbg1-speed.hetzner.com/100MB.bin",
+            "probe_url": "https://nbg1-speed.hetzner.com/100MB.bin",
+            "host": "nbg1-speed.hetzner.com",
+            "port": 443,
+            "path": "/100MB.bin",
+            "scheme": "https",
+            "is_dynamic": False
+        },
+        {
+            "name": "Hetzner FSN1 (10G/100G DE)",
+            "url": "https://fsn1-speed.hetzner.com/100MB.bin",
+            "probe_url": "https://fsn1-speed.hetzner.com/100MB.bin",
+            "host": "fsn1-speed.hetzner.com",
+            "port": 443,
+            "path": "/100MB.bin",
+            "scheme": "https",
+            "is_dynamic": False
+        },
+        {
+            "name": "DataPacket FRA (Tier-1)",
+            "url": "https://fra.download.datapacket.com/100mb.bin",
+            "probe_url": "https://fra.download.datapacket.com/100mb.bin",
+            "host": "fra.download.datapacket.com",
+            "port": 443,
+            "path": "/100mb.bin",
+            "scheme": "https",
+            "is_dynamic": False
+        },
+        {
+            "name": "Tele2 / GARR Mirror",
+            "url": "http://speedtest.tele2.net/100MB.zip",
+            "probe_url": "http://speedtest.tele2.net/100MB.zip",
+            "host": "speedtest.tele2.net",
+            "port": 80,
+            "path": "/100MB.zip",
+            "scheme": "http",
+            "is_dynamic": False
+        }
+    ]
+
+    def select_best_endpoints(self, timeout_s: float = 0.4) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+        """
+        Pre-Flight Latency & Readiness Check (<= 400 ms totali, parallelo):
+        Invia richieste Range minime (128 KB) o HEAD ai server candidati in parallelo.
+        Scarta endpoint con 429/5xx o timeout > 500 ms.
+        Seleziona l'endpoint primario con RTT minore / massima prontezza.
+        """
+        if os.environ.get("NETPROBE_SPEED_HOST"):
+            return {
+                "name": "Custom Host",
+                "host": self.speed_host,
+                "port": self.speed_port,
+                "path": "/__down?bytes=5000000",
+                "scheme": self.speed_scheme,
+                "url": f"{self.speed_scheme}://{self.speed_host}:{self.speed_port}/__down?bytes=5000000",
+                "is_dynamic": True
+            }, None
+
+        import concurrent.futures
+        results = []
+
+        def probe_ep(ep):
+            t0 = time.perf_counter()
+            try:
+                headers = {
+                    "User-Agent": "NetProbe/3.0",
+                    "Range": "bytes=0-131071"
+                }
+                req = urllib.request.Request(ep.get("probe_url") or ep["url"], headers=headers)
+                with urllib.request.urlopen(req, timeout=0.5) as resp:
+                    status = resp.status
+                    if status in (200, 206):
+                        _ = resp.read(131072)
+                        dt_ms = (time.perf_counter() - t0) * 1000.0
+                        if dt_ms <= 500.0:
+                            return (ep, dt_ms)
+            except Exception:
+                pass
+            return None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(self.CANDIDATE_DOWNLOAD_ENDPOINTS)) as pool:
+            futures = [pool.submit(probe_ep, ep) for ep in self.CANDIDATE_DOWNLOAD_ENDPOINTS]
+            done, _ = concurrent.futures.wait(futures, timeout=max(0.40, timeout_s))
+            for f in done:
+                res = f.result()
+                if res:
+                    results.append(res)
+
+        if not results:
+            primary = dict(self.CANDIDATE_DOWNLOAD_ENDPOINTS[0])
+            secondary = dict(self.CANDIDATE_DOWNLOAD_ENDPOINTS[1])
+            return primary, secondary
+
+        # Ordina per RTT crescente (più veloce per primo)
+        results.sort(key=lambda x: x[1])
+        primary = dict(results[0][0])
+        primary["rtt_ms"] = round(results[0][1], 2)
+        secondary = None
+        if len(results) > 1:
+            secondary = dict(results[1][0])
+            secondary["rtt_ms"] = round(results[1][1], 2)
+        return primary, secondary
+
     def _summarize_stream(self, series, warmup: float, end_t: float) -> Dict[str, Any]:
         """
         series: [(t_s, cumulative_bytes)] campionati a intervalli regolari.
@@ -859,7 +1003,7 @@ class PerformanceTester:
         counter = [0]
         stream_errors = []
         ctx = ssl.create_default_context()
-        CH = 64 * 1024
+        CH = 128 * 1024 if direction == "down" else 64 * 1024
         payload = b"\0" * CH
         body_len = 100_000_000  # 100 MB: non verrà mai completato, il test è a tempo
 
@@ -882,13 +1026,27 @@ class PerformanceTester:
         def download_worker():
             buf = bytearray(CH)
             req_size = 5_000_000
+            path_tmpl = getattr(self, "speed_path", "/__down?bytes=5000000")
+            is_dynamic = getattr(self, "speed_is_dynamic", True)
+            conn = None
             while not stop_event.is_set():
-                conn = None
+                if conn is None:
+                    try:
+                        conn = connect()
+                    except Exception as e:
+                        with lock:
+                            stream_errors.append({"direction": "down", "error": f"{type(e).__name__}: {e}"})
+                        time.sleep(0.1)
+                        continue
                 try:
-                    conn = connect()
-                    conn.request("GET", f"/__down?bytes={req_size}", headers={"User-Agent": "NetProbe/3.0"})
+                    req_path = f"/__down?bytes={req_size}" if is_dynamic else path_tmpl
+                    headers = {
+                        "User-Agent": "NetProbe/3.0",
+                        "Connection": "keep-alive"
+                    }
+                    conn.request("GET", req_path, headers=headers)
                     resp = conn.getresponse()
-                    if resp.status != 200:
+                    if resp.status not in (200, 206):
                         err_entry = {
                             "direction": "down",
                             "status": resp.status,
@@ -899,24 +1057,46 @@ class PerformanceTester:
                             stream_errors.append(err_entry)
                         if resp.status in (429, 403) and req_size > 1_000_000:
                             req_size = 1_000_000
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+                        conn = None
                         time.sleep(0.3)
                         continue
+
                     while not stop_event.is_set():
                         n = resp.readinto(buf)
                         if not n:
                             break
                         with lock:
                             counter[0] += n
+
+                    # Verifica se il server ha chiuso o richiede chiusura
+                    conn_hdr = resp.getheader("Connection", "").lower()
+                    if conn_hdr == "close":
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+                        conn = None
+
                 except Exception as e:
                     with lock:
                         stream_errors.append({"direction": "down", "error": f"{type(e).__name__}: {e}"})
-                    time.sleep(0.1)
-                finally:
                     if conn:
                         try:
                             conn.close()
                         except Exception:
                             pass
+                        conn = None
+                    time.sleep(0.1)
+
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         def upload_worker():
             while not stop_event.is_set():
@@ -967,6 +1147,7 @@ class PerformanceTester:
 
         series = [(0.0, 0)]
         last_t, last_b = 0.0, 0
+        scaled_workers = False
         while True:
             time.sleep(0.2)
             now = time.perf_counter() - t0
@@ -976,6 +1157,17 @@ class PerformanceTester:
             if live_cb:
                 dt = now - last_t
                 live_cb(round(now, 1), round(((cur - last_b) * 8.0) / (dt * 1e6), 1) if dt > 0 else 0.0)
+
+            # Ottimizzazione gigabit: se il throughput iniziale supera 100 Mbps, scala da 4 a 6 worker concorrenti
+            if direction == "down" and not scaled_workers and now >= 0.4 and now < duration - 1.0:
+                current_rate_mbps = (cur * 8.0) / (now * 1e6)
+                if current_rate_mbps > 100.0 and len(threads) < 6:
+                    scaled_workers = True
+                    for _ in range(2):
+                        extra_th = threading.Thread(target=target, daemon=True)
+                        threads.append(extra_th)
+                        extra_th.start()
+
             if now >= duration:
                 stop_event.set()
                 break
@@ -1043,21 +1235,23 @@ class PerformanceTester:
             pass
         return 5000.0
 
-    def _measure_secondary_endpoint(self, timeout: float = 2.5) -> Optional[Dict[str, float]]:
-        """Esegue un campione di download su un endpoint secondario indipendente (OVH) per verifica incrociata."""
-        if getattr(self, "speed_host", self.SPEED_HOST) != self.SPEED_HOST:
+    def _measure_secondary_endpoint(self, endpoint: Optional[Dict[str, Any]] = None, timeout: float = 2.5) -> Optional[Dict[str, Any]]:
+        """Esegue un campione di download su un endpoint secondario indipendente ad alta capacità per verifica incrociata."""
+        if os.environ.get("NETPROBE_SPEED_HOST") or getattr(self, "speed_host", None) in ("127.0.0.1", "localhost") or getattr(self, "speed_port", 443) != 443:
             return None
-        url = "https://proof.ovh.net/files/10Mb.dat"
+        url = (endpoint.get("url") if endpoint else None) or "https://nbg1-speed.hetzner.com/100MB.bin"
+        server_host = (endpoint.get("host") if endpoint else None) or "nbg1-speed.hetzner.com"
         try:
             t0 = time.perf_counter()
-            req = urllib.request.Request(url, headers={"User-Agent": "NetProbe/3.0"})
+            req = urllib.request.Request(url, headers={"User-Agent": "NetProbe/3.0", "Range": "bytes=0-20971519"})
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 total = 0
                 samples = []
                 last_t = t0
                 last_bytes = 0
+                buf_size = 131072
                 while time.perf_counter() - t0 < 1.0:
-                    chunk = resp.read(65536)
+                    chunk = resp.read(buf_size)
                     if not chunk:
                         break
                     total += len(chunk)
@@ -1080,7 +1274,7 @@ class PerformanceTester:
                         peak = round(float(st[p90_idx]), 2)
                     else:
                         peak = sustained
-                    return {"sustained_mbps": sustained, "peak_mbps": peak, "samples": samples}
+                    return {"sustained_mbps": sustained, "peak_mbps": peak, "samples": samples, "server": server_host}
         except Exception:
             pass
         return None

@@ -150,18 +150,20 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.add_argument("--tui", action="store_true", help="Avvia la dashboard interattiva a schermo intero (default)")
+    parser.add_argument("--tui", action="store_true", help="Avvia la dashboard interattiva moderna a schermo intero (default se nessun flag è specificato)")
     parser.add_argument("--non-interactive", "--cli", action="store_true", dest="non_interactive", help="Esegui in modalità non-interattiva / headless nel terminale")
     parser.add_argument("--quick", action="store_true", help="Scansione veloce (salta il test di banda approfondito)")
     parser.add_argument("--full", action="store_true", help="Scansione approfondita con misurazione banda e bufferbloat")
     parser.add_argument("--json", action="store_true", help="Stampa l'output unicamente in formato JSON puro (per automazione)")
     parser.add_argument("--no-color", action="store_true", help="Disattiva la colorazione ANSI nel terminale")
-    parser.add_argument("--export", type=str, metavar="FILE", help="Esporta il report diagnostico in file JSON")
+    parser.add_argument("--export", type=str, metavar="FILE", help="Esporta il report diagnostico in file JSON o HTML")
 
     args = parser.parse_args()
 
-    # Se l'utente specifica --non-interactive, --cli, --json o --export senza --tui, esegui headless
-    if args.non_interactive or args.json or (args.export and not args.tui):
+    # Se l'utente specifica --non-interactive, --cli, --json, --export, --quick o --full senza --tui esplicito, esegui headless
+    headless = args.non_interactive or args.json or args.quick or args.full or (args.export and not args.tui)
+
+    if headless and not args.tui:
         run_cli_scan(
             quick=args.quick,
             full=args.full,
@@ -170,11 +172,12 @@ def main():
             export_path=args.export
         )
     else:
-        # Modalità interattiva predefinita TUI
+        # Modalità interattiva predefinita TUI (senza auto-start: attende interazione dell'utente)
         try:
-            start_tui(auto_scan=True)
+            from tui.app import NetProbeTUIApp
+            NetProbeTUIApp(auto_scan=False).run()
         except Exception:
-            # Ripiego pulito su modalità CLI in caso di assenza TTY o terminale limitato
+            # Ripiego pulito su modalità CLI in caso di assenza TTY o terminale non supportato
             run_cli_scan(
                 quick=args.quick,
                 full=args.full,
