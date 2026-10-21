@@ -8,13 +8,13 @@ import os
 import sys
 import time
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Header, Footer, TabbedContent, TabPane, Button, ProgressBar, Label
-from textual.containers import Container, Horizontal, Vertical
+from textual.widgets import Header, Footer, TabbedContent, TabPane, Button, ProgressBar, Label, DataTable
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
 
 from core.platform_info import get_system_summary
@@ -27,6 +27,8 @@ from core.validators import validate_scan_results
 from core.provenance import build_field_provenance
 from tui.views import (
     DashboardView,
+    WifiView,
+    EthernetView,
     LanView,
     WanView,
     PerformanceView,
@@ -34,6 +36,18 @@ from tui.views import (
     IxpView,
     DevicesView
 )
+
+TAB_IDS: List[str] = [
+    "tab-dashboard",
+    "tab-wifi",
+    "tab-ethernet",
+    "tab-lan",
+    "tab-wan",
+    "tab-performance",
+    "tab-medium",
+    "tab-ixp",
+    "tab-devices",
+]
 
 
 class NetProbeTUIApp(App):
@@ -49,13 +63,23 @@ class NetProbeTUIApp(App):
         Binding("s", "start_full_scan", "Completa", show=False),
         Binding("r", "start_quick_scan", "Scansione Rapida"),
         Binding("e", "export_report", "Esporta"),
+        Binding("left", "previous_tab", "Scheda Prec.", show=False),
+        Binding("h", "previous_tab", "Scheda Prec.", show=False),
+        Binding("right", "next_tab", "Scheda Succ.", show=False),
+        Binding("l", "next_tab", "Scheda Succ.", show=False),
+        Binding("up", "scroll_up", "Scorri Su", show=False),
+        Binding("k", "scroll_up", "Scorri Su", show=False),
+        Binding("down", "scroll_down", "Scorri Giù", show=False),
+        Binding("j", "scroll_down", "Scorri Giù", show=False),
         Binding("1", "tab_1", "Sintesi", show=False),
-        Binding("2", "tab_2", "LAN", show=False),
-        Binding("3", "tab_3", "WAN", show=False),
-        Binding("4", "tab_4", "Performance", show=False),
-        Binding("5", "tab_5", "Mezzo Fisico", show=False),
-        Binding("6", "tab_6", "IXP", show=False),
-        Binding("7", "tab_7", "Dispositivi", show=False),
+        Binding("2", "tab_2", "Wi-Fi", show=False),
+        Binding("3", "tab_3", "Ethernet", show=False),
+        Binding("4", "tab_4", "LAN", show=False),
+        Binding("5", "tab_5", "WAN", show=False),
+        Binding("6", "tab_6", "Performance", show=False),
+        Binding("7", "tab_7", "Mezzo Fisico", show=False),
+        Binding("8", "tab_8", "IXP", show=False),
+        Binding("9", "tab_9", "Dispositivi", show=False),
     ]
 
     def __init__(self, initial_data: Optional[Dict[str, Any]] = None, auto_scan: bool = False):
@@ -76,15 +100,19 @@ class NetProbeTUIApp(App):
                 yield Label("Pronto. Seleziona un'azione per iniziare.", id="status-label")
                 yield ProgressBar(id="progress-bar", total=100, show_eta=False)
         with TabbedContent(id="tabs"):
-            with TabPane("📊 Sintesi / Dashboard", id="tab-dashboard"):
+            with TabPane("📊 Sintesi", id="tab-dashboard"):
                 yield DashboardView(id="view-dashboard")
-            with TabPane("💻 LAN & Connettività", id="tab-lan"):
+            with TabPane("📶 Wi-Fi Wireless", id="tab-wifi"):
+                yield WifiView(id="view-wifi")
+            with TabPane("🔌 Ethernet & Switch", id="tab-ethernet"):
+                yield EthernetView(id="view-ethernet")
+            with TabPane("💻 LAN & Rete Locale", id="tab-lan"):
                 yield LanView(id="view-lan")
             with TabPane("🌐 WAN & Sicurezza", id="tab-wan"):
                 yield WanView(id="view-wan")
             with TabPane("🚀 Performance & Banda", id="tab-performance"):
                 yield PerformanceView(id="view-performance")
-            with TabPane("🔬 Mezzo Fisico & Profilo Salti", id="tab-medium"):
+            with TabPane("🔬 Mezzo Fisico & Salti", id="tab-medium"):
                 yield MediumView(id="view-medium")
             with TabPane("🌍 IXP & Routing Ottico", id="tab-ixp"):
                 yield IxpView(id="view-ixp")
@@ -99,25 +127,75 @@ class NetProbeTUIApp(App):
         elif self.auto_scan:
             self.action_start_full_scan()
 
+    def action_previous_tab(self) -> None:
+        tc = self.query_one(TabbedContent)
+        active = tc.active
+        if active in TAB_IDS:
+            idx = TAB_IDS.index(active)
+            new_idx = (idx - 1) % len(TAB_IDS)
+            tc.active = TAB_IDS[new_idx]
+
+    def action_next_tab(self) -> None:
+        tc = self.query_one(TabbedContent)
+        active = tc.active
+        if active in TAB_IDS:
+            idx = TAB_IDS.index(active)
+            new_idx = (idx + 1) % len(TAB_IDS)
+            tc.active = TAB_IDS[new_idx]
+
+    def action_scroll_down(self) -> None:
+        if isinstance(self.focused, DataTable):
+            self.focused.action_cursor_down()
+            return
+        tc = self.query_one(TabbedContent)
+        try:
+            pane = tc.get_pane(tc.active)
+            for scroll in pane.query(VerticalScroll):
+                scroll.scroll_down(animate=False)
+                return
+            pane.scroll_down(animate=False)
+        except Exception:
+            pass
+
+    def action_scroll_up(self) -> None:
+        if isinstance(self.focused, DataTable):
+            self.focused.action_cursor_up()
+            return
+        tc = self.query_one(TabbedContent)
+        try:
+            pane = tc.get_pane(tc.active)
+            for scroll in pane.query(VerticalScroll):
+                scroll.scroll_up(animate=False)
+                return
+            pane.scroll_up(animate=False)
+        except Exception:
+            pass
+
     def action_tab_1(self):
         self.query_one(TabbedContent).active = "tab-dashboard"
 
     def action_tab_2(self):
-        self.query_one(TabbedContent).active = "tab-lan"
+        self.query_one(TabbedContent).active = "tab-wifi"
 
     def action_tab_3(self):
-        self.query_one(TabbedContent).active = "tab-wan"
+        self.query_one(TabbedContent).active = "tab-ethernet"
 
     def action_tab_4(self):
-        self.query_one(TabbedContent).active = "tab-performance"
+        self.query_one(TabbedContent).active = "tab-lan"
 
     def action_tab_5(self):
-        self.query_one(TabbedContent).active = "tab-medium"
+        self.query_one(TabbedContent).active = "tab-wan"
 
     def action_tab_6(self):
-        self.query_one(TabbedContent).active = "tab-ixp"
+        self.query_one(TabbedContent).active = "tab-performance"
 
     def action_tab_7(self):
+        self.query_one(TabbedContent).active = "tab-medium"
+
+    def action_tab_8(self):
+        self.query_one(TabbedContent).active = "tab-ixp"
+
+    def action_tab_9(self):
         self.query_one(TabbedContent).active = "tab-devices"
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -255,6 +333,8 @@ class NetProbeTUIApp(App):
 
     def _apply_scan_data(self, report: Dict[str, Any]):
         self.query_one("#view-dashboard", DashboardView).data = report
+        self.query_one("#view-wifi", WifiView).data = report
+        self.query_one("#view-ethernet", EthernetView).data = report
         self.query_one("#view-lan", LanView).data = report
         self.query_one("#view-wan", WanView).data = report
         self.query_one("#view-performance", PerformanceView).data = report

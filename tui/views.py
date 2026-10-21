@@ -962,32 +962,220 @@ class DashboardView(VerticalScroll):
         self.query_one("#dash-app-streaming", Label).update(f"Video Call: {conf_st} | Cloud Gaming: {cloud_st}")
 
 
+class WifiView(VerticalScroll):
+    """Scheda 2: Parametri Radio Wi-Fi Wireless, segnale RF, frequenza e sicurezza."""
+    data = reactive(None)
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="card"):
+            yield Label("▶  PARAMETRI RADIO WI-FI WIRELESS", classes="card-title")
+            yield _make_kv("Stato Connessione Wi-Fi", val_id="wifi-status", val_class="kv-val-green")
+            yield _make_kv("Interfaccia Wireless", val_id="wifi-iface")
+            yield _make_kv("Nome Rete (SSID)", val_id="wifi-ssid", val_class="kv-val-cyan")
+            yield _make_kv("BSSID (MAC Access Point)", val_id="wifi-bssid")
+            yield _make_kv("Standard / Generazione Wi-Fi", val_id="wifi-gen")
+            yield _make_kv("Link Speed (Tx Rate)", val_id="wifi-tx-rate", val_class="kv-val-green")
+            yield _make_kv("Indice Modulazione (MCS Index)", val_id="wifi-mcs")
+            yield _make_kv("Banda & Frequenza", val_id="wifi-freq")
+            yield _make_kv("Canale & Ampiezza Spettro", val_id="wifi-channel")
+
+        with Container(classes="card"):
+            yield Label("▶  QUALITÀ SEGNALE RF, RUMORE & SICUREZZA", classes="card-title")
+            yield _make_kv("Potenza Segnale (RSSI)", val_id="wifi-rssi", val_class="kv-val-green")
+            yield _make_kv("Rumore di Fondo (Noise Floor)", val_id="wifi-noise")
+            yield _make_kv("Rapporto Segnale/Rumore (SNR)", val_id="wifi-snr", val_class="kv-val-cyan")
+            yield _make_kv("Qualità Percentuale Segnale", val_id="wifi-quality")
+            yield _make_kv("Protocollo di Sicurezza", val_id="wifi-security")
+
+    def on_mount(self):
+        self._update_display(self.data)
+
+    def watch_data(self, new_data):
+        if self.is_mounted:
+            self._update_display(new_data)
+
+    def _update_display(self, data):
+        if not data:
+            return
+        lan = data.get("lan") or {}
+        wifi = lan.get("wifi") or {}
+
+        supported = wifi.get("supported", False)
+        connected = wifi.get("connected", False)
+
+        if not supported:
+            self.query_one("#wifi-status", Label).update("Hardware Wi-Fi non presente o non supportato")
+            self.query_one("#wifi-iface", Label).update("-")
+            self.query_one("#wifi-ssid", Label).update("-")
+            self.query_one("#wifi-bssid", Label).update("-")
+            self.query_one("#wifi-gen", Label).update("-")
+            self.query_one("#wifi-tx-rate", Label).update("-")
+            self.query_one("#wifi-mcs", Label).update("-")
+            self.query_one("#wifi-freq", Label).update("-")
+            self.query_one("#wifi-channel", Label).update("-")
+            self.query_one("#wifi-rssi", Label).update("-")
+            self.query_one("#wifi-noise", Label).update("-")
+            self.query_one("#wifi-snr", Label).update("-")
+            self.query_one("#wifi-quality", Label).update("-")
+            self.query_one("#wifi-security", Label).update("-")
+            return
+
+        iface = wifi.get("interface") or "en0"
+        self.query_one("#wifi-iface", Label).update(str(iface))
+
+        if not connected:
+            self.query_one("#wifi-status", Label).update(f"Interfaccia presente ({iface}) ma non connessa")
+            self.query_one("#wifi-ssid", Label).update("Nessuna rete associata")
+            self.query_one("#wifi-bssid", Label).update("-")
+            self.query_one("#wifi-gen", Label).update("-")
+            self.query_one("#wifi-tx-rate", Label).update("-")
+            self.query_one("#wifi-mcs", Label).update("-")
+            self.query_one("#wifi-freq", Label).update("-")
+            self.query_one("#wifi-channel", Label).update("-")
+            self.query_one("#wifi-rssi", Label).update("-")
+            self.query_one("#wifi-noise", Label).update("-")
+            self.query_one("#wifi-snr", Label).update("-")
+            self.query_one("#wifi-quality", Label).update("-")
+            self.query_one("#wifi-security", Label).update("-")
+            return
+
+        self.query_one("#wifi-status", Label).update("Attivo e Connesso")
+
+        if wifi.get("ssid_hidden_by_os"):
+            self.query_one("#wifi-ssid", Label).update("Nascosto dal sistema operativo (serve permesso Posizione)")
+        else:
+            self.query_one("#wifi-ssid", Label).update(str(wifi.get("ssid") or "Connesso"))
+
+        bssid_mac = wifi.get("bssid") or "-"
+        bssid_vendor = wifi.get("bssid_vendor") or "N/D"
+        self.query_one("#wifi-bssid", Label).update(f"{bssid_mac} ({bssid_vendor})")
+
+        gen = wifi.get("wifi_generation") or ""
+        phy = wifi.get("phy_mode") or ""
+        gen_str = f"{gen} [{phy}]" if (gen and phy) else (gen or phy or "-")
+        self.query_one("#wifi-gen", Label).update(gen_str)
+
+        tx_rate = wifi.get("tx_rate_mbps")
+        self.query_one("#wifi-tx-rate", Label).update(f"{tx_rate:.1f} Mbps" if isinstance(tx_rate, (int, float)) else "-")
+
+        mcs = wifi.get("mcs_index")
+        self.query_one("#wifi-mcs", Label).update(str(mcs) if mcs is not None else "-")
+
+        self.query_one("#wifi-freq", Label).update(str(wifi.get("frequency_ghz") or "-"))
+        self.query_one("#wifi-channel", Label).update(str(wifi.get("channel") or "-"))
+
+        rssi = wifi.get("rssi_dbm")
+        self.query_one("#wifi-rssi", Label).update(f"{rssi} dBm" if rssi is not None else "-")
+
+        noise = wifi.get("noise_dbm")
+        self.query_one("#wifi-noise", Label).update(f"{noise} dBm" if noise is not None else "-")
+
+        snr = wifi.get("snr_db")
+        self.query_one("#wifi-snr", Label).update(f"{snr} dB" if snr is not None else "-")
+
+        qual = wifi.get("signal_quality_pct")
+        self.query_one("#wifi-quality", Label).update(f"{qual}%" if qual is not None else "-")
+
+        self.query_one("#wifi-security", Label).update(str(wifi.get("security") or "-"))
+
+
+class EthernetView(VerticalScroll):
+    """Scheda 3: Connessione Cablata Ethernet e Scoperta Switch Layer 2."""
+    data = reactive(None)
+
+    def compose(self) -> ComposeResult:
+        with Container(classes="card"):
+            yield Label("▶  COLLEGAMENTO CABLATO ETHERNET (PHY LAYER)", classes="card-title")
+            yield _make_kv("Stato Collegamento Ethernet", val_id="eth-status", val_class="kv-val-green")
+            yield _make_kv("Interfaccia Cablata", val_id="eth-iface")
+            yield _make_kv("Velocità di Link Negoziata", val_id="eth-speed", val_class="kv-val-green")
+            yield _make_kv("Modalità Duplex", val_id="eth-duplex")
+            yield _make_kv("Media & Standard Negoziazione", val_id="eth-media")
+            yield _make_kv("Portante / Segnale Carrier", val_id="eth-carrier")
+            yield _make_kv("Cavo di Rete Connesso", val_id="eth-cable")
+            yield _make_kv("MTU Interfaccia Cablata", val_id="eth-mtu")
+
+        with Container(classes="card"):
+            yield Label("▶  SCOPERTA SWITCH LAYER 2 (LLDP / CDP / SNMP)", classes="card-title")
+            yield _make_kv("Tipologia Switch / Infrastruttura", val_id="eth-sw-type", val_class="kv-val-cyan")
+            yield _make_kv("Nome Switch / Hostname", val_id="eth-sw-name")
+            yield _make_kv("Modello Hardware Switch", val_id="eth-sw-model")
+            yield _make_kv("Porta Switch Connessa", val_id="eth-sw-port")
+            yield _make_kv("VLAN ID Assegnata", val_id="eth-sw-vlan")
+            yield _make_kv("Protocollo Discovery", val_id="eth-sw-proto")
+            yield _make_kv("Indirizzo IP di Gestione", val_id="eth-sw-mgmt")
+            yield Label("Descrizione / Diagnosi Layer 2:", classes="card-title")
+            yield Label("-", id="eth-sw-desc", classes="rationale-bullet")
+
+    def on_mount(self):
+        self._update_display(self.data)
+
+    def watch_data(self, new_data):
+        if self.is_mounted:
+            self._update_display(new_data)
+
+    def _update_display(self, data):
+        if not data:
+            return
+        lan = data.get("lan") or {}
+        eth = lan.get("ethernet") or {}
+        p_if = lan.get("primary_interface") or {}
+
+        is_active = eth.get("active") or eth.get("carrier") or eth.get("cable_connected") or (eth.get("speed_mbps") is not None)
+        iface = eth.get("interface") or p_if.get("name") or "-"
+
+        if is_active:
+            self.query_one("#eth-status", Label).update("Attivo e Connesso")
+            self.query_one("#eth-iface", Label).update(str(iface))
+            spd = eth.get("speed_mbps")
+            self.query_one("#eth-speed", Label).update(f"{spd} Mbps" if spd else "Non rilevata")
+            self.query_one("#eth-duplex", Label).update(str(eth.get("duplex") or "-"))
+            self.query_one("#eth-media", Label).update(str(eth.get("media_description") or "-"))
+            carr = eth.get("carrier")
+            self.query_one("#eth-carrier", Label).update("Rilevato (Link Up)" if carr else ("Assente" if carr is False else "-"))
+            cable = eth.get("cable_connected")
+            self.query_one("#eth-cable", Label).update("Connesso" if cable else ("Scollegato" if cable is False else "-"))
+            self.query_one("#eth-mtu", Label).update(f"{p_if.get('mtu', '-')} bytes" if p_if.get('mtu') else "-")
+        else:
+            self.query_one("#eth-status", Label).update("Non attiva / Cavo scollegato")
+            self.query_one("#eth-iface", Label).update(str(iface))
+            self.query_one("#eth-speed", Label).update("-")
+            self.query_one("#eth-duplex", Label).update("-")
+            self.query_one("#eth-media", Label).update("-")
+            self.query_one("#eth-carrier", Label).update("Assente (Link Down)")
+            self.query_one("#eth-cable", Label).update("Non rilevato")
+            self.query_one("#eth-mtu", Label).update("-")
+
+        sw = eth.get("switch_info") or lan.get("switch_discovery") or {}
+        self.query_one("#eth-sw-type", Label).update(str(sw.get("switch_type") or "Switch L2 Unmanaged (Trasparente)"))
+        self.query_one("#eth-sw-name", Label).update(str(sw.get("switch_name") or "-"))
+        self.query_one("#eth-sw-model", Label).update(str(sw.get("switch_model") or "-"))
+        self.query_one("#eth-sw-port", Label).update(str(sw.get("port_id") or "-"))
+        self.query_one("#eth-sw-vlan", Label).update(str(sw.get("vlan") or "-"))
+        self.query_one("#eth-sw-proto", Label).update(str(sw.get("protocol") or "Nessuno (LLDP/CDP non rilevati)"))
+        self.query_one("#eth-sw-mgmt", Label).update(str(sw.get("management_ip") or "-"))
+        self.query_one("#eth-sw-desc", Label).update(str(sw.get("description") or "Nessun frame di gestione L2 intercettato."))
+
+
 class LanView(VerticalScroll):
-    """Scheda 2: Configurazione LAN, Wi-Fi / Ethernet, Gateway, DHCP e DNSSEC."""
+    """Scheda 4: Configurazione LAN, Indirizzamento IP, Gateway, DHCP e DNSSEC."""
     data = reactive(None)
 
     def compose(self) -> ComposeResult:
         with Container(classes="card"):
             yield Label("▶  SCHEDA DI RETE & CONFIGURAZIONE LAN", classes="card-title")
-            yield _make_kv("Interfaccia Attiva", val_id="lan-iface")
+            yield _make_kv("Interfaccia Attiva", val_id="lan-iface", val_class="kv-val-green")
             yield _make_kv("Indirizzo Fisico (MAC)", val_id="lan-mac")
             yield _make_kv("Produttore Hardware (OUI)", val_id="lan-oui")
-            yield _make_kv("Indirizzo IPv4 Locale", val_id="lan-ip")
+            yield _make_kv("Indirizzo IPv4 Locale", val_id="lan-ip", val_class="kv-val-green")
             yield _make_kv("Maschera di Sottorete", val_id="lan-mask")
             yield _make_kv("Indirizzo Broadcast", val_id="lan-bcast")
             yield _make_kv("MTU Interfaccia", val_id="lan-mtu")
-            yield _make_kv("IPv6 Link-Local", val_id="lan-ipv6")
-
-        with Container(classes="card"):
-            yield Label("▶  PARAMETRI MEDIA (ETHERNET / WI-FI)", classes="card-title")
-            yield _make_kv("Velocità di Link / Tx Rate", val_id="lan-speed")
-            yield _make_kv("Modalità Duplex / Standard Wi-Fi", val_id="lan-duplex")
-            yield _make_kv("Stato Cavo / Segnale RSSI", val_id="lan-carrier")
-            yield _make_kv("Switch L2 / Rumore & SNR", val_id="lan-switch")
+            yield _make_kv("IPv6 Link-Local / Globale", val_id="lan-ipv6")
 
         with Container(classes="card"):
             yield Label("▶  GATEWAY, DHCP & RISOLUZIONE DNS", classes="card-title")
-            yield _make_kv("Default Gateway (Router)", val_id="lan-gw")
+            yield _make_kv("Default Gateway (Router)", val_id="lan-gw", val_class="kv-val-cyan")
             yield _make_kv("MAC Address Router", val_id="lan-gw-mac")
             yield _make_kv("Produttore Router (OUI)", val_id="lan-gw-oui")
             yield _make_kv("Server DHCP", val_id="lan-dhcp")
@@ -999,10 +1187,14 @@ class LanView(VerticalScroll):
             yield Label("▶  CONVALIDA CRITTOGRAFICA DNSSEC PER RISOLUTORE", classes="card-title")
             table = DataTable(id="table-dnssec")
             table.zebra_stripes = True
+            table.can_focus = True
+            table.cursor_type = "row"
             yield table
 
     def on_mount(self):
         tbl = self.query_one("#table-dnssec", DataTable)
+        tbl.can_focus = True
+        tbl.cursor_type = "row"
         tbl.add_columns("Server DNS", "PTR Hostname", "Tipo", "Stato Convalida DNSSEC")
         self._update_display(self.data)
 
@@ -1022,26 +1214,12 @@ class LanView(VerticalScroll):
         self.query_one("#lan-mask", Label).update(f"{p_if.get('netmask', '-')} (/{p_if.get('cidr', '-')})")
         self.query_one("#lan-bcast", Label).update(str(p_if.get("broadcast", "-")))
         self.query_one("#lan-mtu", Label).update(f"{p_if.get('mtu', '-')} bytes" if p_if.get("mtu") else "-")
-        self.query_one("#lan-ipv6", Label).update(str(p_if.get("ipv6_link_local", "-") or "-"))
-
-        eth = lan.get("ethernet") or {}
-        wifi = lan.get("wifi") or {}
-        if eth:
-            self.query_one("#lan-speed", Label).update(f"{eth.get('speed_mbps', '-')} Mbps")
-            self.query_one("#lan-duplex", Label).update(f"{eth.get('duplex', '-')} ({eth.get('media_description', '-')})")
-            self.query_one("#lan-carrier", Label).update(f"Attivo / {eth.get('status', 'Connesso')}")
-            sw = lan.get("switch_discovery") or {}
-            self.query_one("#lan-switch", Label).update(str(sw.get("summary") or sw.get("system_name") or "Switch L2 unmanaged / diretto"))
-        elif wifi:
-            self.query_one("#lan-speed", Label).update(f"Tx Rate: {wifi.get('tx_rate_mbps', '-')} Mbps (MCS {wifi.get('mcs_index', '-')})")
-            self.query_one("#lan-duplex", Label).update(f"Standard: {wifi.get('standard', '-')} | Canale {wifi.get('channel', '-')}")
-            self.query_one("#lan-carrier", Label).update(f"RSSI: {wifi.get('rssi_dbm', '-')} dBm | Rumore: {wifi.get('noise_dbm', '-')} dBm")
-            self.query_one("#lan-switch", Label).update(f"SNR: {wifi.get('snr_db', '-')} dB | SSID: {wifi.get('ssid', '-')}")
+        ipv6_list = p_if.get("ipv6_list") or []
+        if ipv6_list:
+            ip6_strs = [f"{x.get('address')}/{x.get('prefix')}" for x in ipv6_list if x.get('address')]
+            self.query_one("#lan-ipv6", Label).update(", ".join(ip6_strs[:2]))
         else:
-            self.query_one("#lan-speed", Label).update("-")
-            self.query_one("#lan-duplex", Label).update("-")
-            self.query_one("#lan-carrier", Label).update("-")
-            self.query_one("#lan-switch", Label).update("-")
+            self.query_one("#lan-ipv6", Label).update(str(p_if.get("ipv6_link_local", "-") or "-"))
 
         gw = lan.get("gateway") or {}
         self.query_one("#lan-gw", Label).update(str(gw.get("ipv4", "-")))
@@ -1150,6 +1328,8 @@ class PerformanceView(VerticalScroll):
             yield Label("▶  MATRICE DI LATENZA TARGET", classes="card-title")
             table = DataTable(id="table-targets")
             table.zebra_stripes = True
+            table.can_focus = True
+            table.cursor_type = "row"
             yield table
 
         with Container(classes="card"):
@@ -1264,6 +1444,8 @@ class MediumView(VerticalScroll):
             yield Label("▶  PROFILO LATENZA SALTO PER SALTO (ACCESS PROFILE)", classes="card-title")
             table = DataTable(id="table-hops")
             table.zebra_stripes = True
+            table.can_focus = True
+            table.cursor_type = "row"
             yield table
 
         with Container(classes="card"):
@@ -1379,6 +1561,8 @@ class IxpView(VerticalScroll):
             yield Label("▶  STRUTTURE DI PEERING OPERATORE (PEERINGDB)", classes="card-title")
             table = DataTable(id="table-peeringdb")
             table.zebra_stripes = True
+            table.can_focus = True
+            table.cursor_type = "row"
             yield table
 
     def on_mount(self):
@@ -1457,6 +1641,8 @@ class DevicesView(VerticalScroll):
             yield Label("-", id="dev-total-label", classes="hero-subtitle")
             table = DataTable(id="table-devices")
             table.zebra_stripes = True
+            table.can_focus = True
+            table.cursor_type = "row"
             yield table
 
     def on_mount(self):

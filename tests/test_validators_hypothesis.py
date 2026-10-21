@@ -11,7 +11,7 @@ import math
 import unittest
 from hypothesis import given, strategies as st, assume
 
-from core.oui_data import lookup_vendor, is_placeholder_mac, is_locally_administered_mac
+from core.oui_data import lookup_vendor, is_placeholder_mac, is_locally_administered_mac, OUI_DATABASE, _get_ieee_oui_map
 from core.validators import compute_network_and_broadcast, validate_mtu, validate_packet_loss
 from core.performance import calculate_rfc3550_jitter, calculate_robust_stats
 from core.estimators import NetworkEstimator
@@ -74,8 +74,9 @@ class TestHypothesisPureFunctions(unittest.TestCase):
         # Se non è placeholder ed ha il bit locale settato
         if not is_placeholder_mac(mac) and (mac_bytes[0] & 0x02):
             self.assertTrue(is_locally_administered_mac(mac))
-            # Se non fa parte di una OUI specifica hardcoded
-            if f"{mac_bytes[0]:02x}:{mac_bytes[1]:02x}:{mac_bytes[2]:02x}" not in ("02:42:ac", "c2:2a:1c"):
+            # Se non fa parte di una OUI specifica catalogata
+            prefix = f"{mac_bytes[0]:02x}:{mac_bytes[1]:02x}:{mac_bytes[2]:02x}"
+            if prefix not in OUI_DATABASE and prefix not in _get_ieee_oui_map():
                 self.assertIn("Locally Administered", vendor)
 
     # 3. Percentili, Spread, IQR e MAD

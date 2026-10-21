@@ -208,8 +208,11 @@ class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
     def setUpClass(cls):
         fixtures_dir = os.path.join(os.path.dirname(__file__), "fixtures")
         eth_path = os.path.join(fixtures_dir, "real_ethernet_run1.json")
+        wifi_path = os.path.join(fixtures_dir, "real_wifi_fttc.json")
         with open(eth_path, "r", encoding="utf-8") as f:
             cls.eth_data = json.load(f)
+        with open(wifi_path, "r", encoding="utf-8") as f:
+            cls.wifi_data = json.load(f)
 
     async def test_tui_empty_launch(self):
         """Verifica che la TUI si avvii in stato pronto senza avviare scansioni automaticamente."""
@@ -228,7 +231,7 @@ class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(btn_full.disabled)
 
     async def test_tui_tab_navigation(self):
-        """Verifica la navigazione rapida tra tutte le 7 schede della TUI."""
+        """Verifica la navigazione rapida e con frecce tra tutte le 9 schede della TUI."""
         from tui.app import NetProbeTUIApp
         from textual.widgets import TabbedContent
 
@@ -237,56 +240,110 @@ class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
             tc = app.query_one(TabbedContent)
             self.assertEqual(tc.active, "tab-dashboard")
 
+            # 1 -> 9 direct actions
             app.action_tab_2()
             await pilot.pause()
-            self.assertEqual(tc.active, "tab-lan")
+            self.assertEqual(tc.active, "tab-wifi")
 
             app.action_tab_3()
             await pilot.pause()
-            self.assertEqual(tc.active, "tab-wan")
+            self.assertEqual(tc.active, "tab-ethernet")
 
             app.action_tab_4()
             await pilot.pause()
-            self.assertEqual(tc.active, "tab-performance")
+            self.assertEqual(tc.active, "tab-lan")
 
             app.action_tab_5()
             await pilot.pause()
-            self.assertEqual(tc.active, "tab-medium")
+            self.assertEqual(tc.active, "tab-wan")
 
             app.action_tab_6()
             await pilot.pause()
-            self.assertEqual(tc.active, "tab-ixp")
+            self.assertEqual(tc.active, "tab-performance")
 
             app.action_tab_7()
             await pilot.pause()
+            self.assertEqual(tc.active, "tab-medium")
+
+            app.action_tab_8()
+            await pilot.pause()
+            self.assertEqual(tc.active, "tab-ixp")
+
+            app.action_tab_9()
+            await pilot.pause()
             self.assertEqual(tc.active, "tab-devices")
 
+            # Next / Previous arrow navigation
+            app.action_next_tab()
+            await pilot.pause()
+            self.assertEqual(tc.active, "tab-dashboard")
+
+            app.action_previous_tab()
+            await pilot.pause()
+            self.assertEqual(tc.active, "tab-devices")
+
+            app.action_previous_tab()
+            await pilot.pause()
+            self.assertEqual(tc.active, "tab-ixp")
+
+            # Scroll actions do not crash
+            app.action_scroll_down()
+            await pilot.pause()
+            app.action_scroll_up()
+            await pilot.pause()
+
     async def test_tui_data_population(self):
-        """Verifica che i dati della scansione popolino metriche e tutte le 5 DataTable."""
+        """Verifica che i dati popolino metriche, Wi-Fi, Ethernet e tutte le 5 DataTable."""
         from tui.app import NetProbeTUIApp
         from textual.widgets import DataTable, Label
 
-        app = NetProbeTUIApp(initial_data=self.eth_data, auto_scan=False)
-        async with app.run_test() as pilot:
+        # Test con dati Ethernet
+        app_eth = NetProbeTUIApp(initial_data=self.eth_data, auto_scan=False)
+        async with app_eth.run_test() as pilot:
             # Dashboard
-            med_lbl = app.query_one("#dash-medium-title", Label)
+            med_lbl = app_eth.query_one("#dash-medium-title", Label)
             self.assertIn("Fibra", str(med_lbl.render()))
 
+            # Ethernet Card
+            eth_spd = app_eth.query_one("#eth-speed", Label)
+            self.assertIn("1000", str(eth_spd.render()))
+            eth_sw = app_eth.query_one("#eth-sw-type", Label)
+            self.assertIn("Switch L2 Unmanaged", str(eth_sw.render()))
+
+            # Wi-Fi in scenario Ethernet (hardware presente, non connessa)
+            wifi_st = app_eth.query_one("#wifi-status", Label)
+            self.assertIn("non connessa", str(wifi_st.render()))
+
             # DataTables
-            t_dnssec = app.query_one("#table-dnssec", DataTable)
+            t_dnssec = app_eth.query_one("#table-dnssec", DataTable)
             self.assertGreaterEqual(t_dnssec.row_count, 1)
+            self.assertTrue(t_dnssec.can_focus)
 
-            t_targets = app.query_one("#table-targets", DataTable)
+            t_targets = app_eth.query_one("#table-targets", DataTable)
             self.assertGreaterEqual(t_targets.row_count, 1)
+            self.assertTrue(t_targets.can_focus)
 
-            t_hops = app.query_one("#table-hops", DataTable)
+            t_hops = app_eth.query_one("#table-hops", DataTable)
             self.assertGreaterEqual(t_hops.row_count, 1)
+            self.assertTrue(t_hops.can_focus)
 
-            t_peering = app.query_one("#table-peeringdb", DataTable)
+            t_peering = app_eth.query_one("#table-peeringdb", DataTable)
             self.assertGreaterEqual(t_peering.row_count, 1)
+            self.assertTrue(t_peering.can_focus)
 
-            t_devs = app.query_one("#table-devices", DataTable)
+            t_devs = app_eth.query_one("#table-devices", DataTable)
             self.assertGreaterEqual(t_devs.row_count, 1)
+            self.assertTrue(t_devs.can_focus)
+
+        # Test con dati Wi-Fi
+        app_wifi = NetProbeTUIApp(initial_data=self.wifi_data, auto_scan=False)
+        async with app_wifi.run_test() as pilot:
+            wifi_st = app_wifi.query_one("#wifi-status", Label)
+            self.assertIn("Connesso", str(wifi_st.render()))
+            wifi_rate = app_wifi.query_one("#wifi-tx-rate", Label)
+            self.assertIn("1200", str(wifi_rate.render()))
+            wifi_rssi = app_wifi.query_one("#wifi-rssi", Label)
+            self.assertIn("-45", str(wifi_rssi.render()))
 
     async def test_tui_export_report(self):
         """Verifica che l'azione di esportazione generi il file JSON corretto."""

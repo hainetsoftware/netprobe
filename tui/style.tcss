@@ -1,27 +1,27 @@
 /* NetProbe Pro Modern Responsive TCSS Stylesheet */
 
 Screen {
-    background: #0d1117;
-    color: #e6edf3;
+    background: #0b0f17;
+    color: #f1f5f9;
 }
 
 Header {
-    background: #161b22;
-    color: #58a6ff;
+    background: #131b26;
+    color: #38bdf8;
     text-style: bold;
 }
 
 Footer {
-    background: #161b22;
-    color: #8b949e;
+    background: #131b26;
+    color: #94a3b8;
 }
 
 #hero-bar {
     dock: top;
     height: auto;
-    background: #161b22;
+    background: #131b26;
     padding: 1 2;
-    border-bottom: solid #30363d;
+    border-bottom: solid #202d3d;
 }
 
 #action-buttons {
@@ -46,21 +46,21 @@ Button {
 }
 
 #btn-quick {
-    background: #1f6feb;
+    background: #2563eb;
     color: #ffffff;
     text-style: bold;
 }
 #btn-quick:hover {
-    background: #388bfd;
+    background: #3b82f6;
 }
 
 #btn-export {
-    background: #30363d;
-    color: #c9d1d9;
+    background: #202d3d;
+    color: #f1f5f9;
     text-style: bold;
 }
 #btn-export:hover {
-    background: #484f58;
+    background: #2e3e52;
 }
 
 #status-container {
@@ -69,7 +69,7 @@ Button {
 }
 
 #status-label {
-    color: #8b949e;
+    color: #94a3b8;
     text-style: italic;
     height: 1;
     margin-bottom: 0;
@@ -82,24 +82,45 @@ ProgressBar {
 
 TabbedContent {
     height: 1fr;
-    background: #0d1117;
+    background: #0b0f17;
 }
 
-ContentTab {
-    text-style: bold;
+Tabs {
+    background: #131b26;
+    border-bottom: solid #202d3d;
+    height: 3;
+}
+
+Tab, ContentTab {
+    color: #8b9bb4;
+    background: #131b26;
     padding: 0 2;
+    text-style: bold;
 }
 
-ContentTab.-active {
-    color: #58a6ff;
-    border-bottom: tall #58a6ff;
+Tab:hover, ContentTab:hover {
+    color: #f1f5f9;
+    background: #1a2433;
+}
+
+Tab.-active, ContentTab.-active {
+    color: #ffffff;
+    background: #0066cc;
+    text-style: bold;
+    border-bottom: tall #38bdf8;
+}
+
+Tabs > Tab:focus, Tabs > ContentTab:focus {
+    color: #ffffff;
+    background: #0077ee;
+    border-bottom: tall #38bdf8;
 }
 
 TabPane {
     padding: 1 2;
     overflow-y: auto;
     overflow-x: auto;
-    background: #0d1117;
+    background: #0b0f17;
 }
 
 .pane-scroll {
@@ -109,28 +130,28 @@ TabPane {
 }
 
 .card {
-    background: #161b22;
-    border: round #30363d;
+    background: #131b26;
+    border: round #202d3d;
     padding: 1 2;
-    margin: 1 0;
+    margin-bottom: 1;
     height: auto;
 }
 
 .card-title {
     text-style: bold;
-    color: #58a6ff;
+    color: #38bdf8;
     margin-bottom: 1;
 }
 
 .card-title-amber {
     text-style: bold;
-    color: #d29922;
+    color: #facc15;
     margin-bottom: 1;
 }
 
 .card-title-emerald {
     text-style: bold;
-    color: #3fb950;
+    color: #4ade80;
     margin-bottom: 1;
 }
 
@@ -140,8 +161,8 @@ TabPane {
 }
 
 .hero-card {
-    background: #161b22;
-    border: round #30363d;
+    background: #131b26;
+    border: round #202d3d;
     padding: 1 2;
     margin-right: 1;
     height: auto;
@@ -150,18 +171,18 @@ TabPane {
 
 .hero-value {
     text-style: bold;
-    color: #3fb950;
+    color: #4ade80;
     margin: 1 0;
 }
 
 .hero-value-cyan {
     text-style: bold;
-    color: #58a6ff;
+    color: #38bdf8;
     margin: 1 0;
 }
 
 .hero-subtitle {
-    color: #8b949e;
+    color: #94a3b8;
     text-style: italic;
 }
 
@@ -171,32 +192,32 @@ TabPane {
 }
 
 .kv-key {
-    color: #8b949e;
+    color: #94a3b8;
     width: 36;
 }
 
 .kv-val {
-    color: #e6edf3;
+    color: #f1f5f9;
     text-style: bold;
 }
 
 .kv-val-green {
-    color: #3fb950;
+    color: #4ade80;
     text-style: bold;
 }
 
 .kv-val-cyan {
-    color: #58a6ff;
+    color: #38bdf8;
     text-style: bold;
 }
 
 .kv-val-amber {
-    color: #d29922;
+    color: #facc15;
     text-style: bold;
 }
 
 .kv-val-red {
-    color: #f85149;
+    color: #f87171;
     text-style: bold;
 }
 
@@ -222,32 +243,36 @@ TabPane {
 }
 
 .badge-blue {
-    background: #1f6feb;
+    background: #2563eb;
     color: #ffffff;
 }
 
 DataTable {
     height: auto;
     max-height: 22;
-    background: #161b22;
-    border: solid #30363d;
+    background: #131b26;
+    border: solid #202d3d;
     margin: 1 0;
 }
 
 DataTable > .datatable--header {
-    background: #21262d;
-    color: #58a6ff;
+    background: #1a2433;
+    color: #38bdf8;
     text-style: bold;
 }
 
+DataTable:focus {
+    border: solid #38bdf8;
+}
+
 .rationale-bullet {
-    color: #c9d1d9;
+    color: #cbd5e1;
     margin: 0 0 0 2;
 }
 
 #empty-state-card {
-    background: #161b22;
-    border: dashed #30363d;
+    background: #131b26;
+    border: dashed #202d3d;
     padding: 2 4;
     margin: 2 0;
     text-align: center;
@@ -255,11 +280,11 @@ DataTable > .datatable--header {
 }
 
 #empty-state-title {
-    color: #58a6ff;
+    color: #38bdf8;
     text-style: bold;
     margin-bottom: 1;
 }
 
 #empty-state-subtitle {
-    color: #8b949e;
+    color: #94a3b8;
 }
