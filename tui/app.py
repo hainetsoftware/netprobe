@@ -8,11 +8,12 @@ import os
 import sys
 import time
 import json
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.theme import Theme
 from textual.widgets import Header, Footer, TabbedContent, TabPane, Button, ProgressBar, Label, DataTable
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.reactive import reactive
@@ -49,6 +50,61 @@ TAB_IDS: List[str] = [
     "tab-devices",
 ]
 
+CUSTOM_THEMES: List[Theme] = [
+    Theme(
+        name="netprobe-dark",
+        primary="#38bdf8",
+        secondary="#2563eb",
+        accent="#38bdf8",
+        foreground="#f1f5f9",
+        background="#0b0f17",
+        surface="#131b26",
+        panel="#202d3d",
+        success="#4ade80",
+        warning="#facc15",
+        error="#f87171",
+        dark=True,
+    ),
+    Theme(
+        name="netprobe-cyberpunk",
+        primary="#ff2a85",
+        secondary="#00f0ff",
+        accent="#fcee0a",
+        foreground="#f8fafc",
+        background="#090414",
+        surface="#160b2e",
+        panel="#2d1657",
+        success="#00ff9f",
+        warning="#fcee0a",
+        error="#ff0055",
+        dark=True,
+    ),
+    Theme(
+        name="netprobe-matrix",
+        primary="#00ff41",
+        secondary="#008f11",
+        accent="#00ff41",
+        foreground="#d1ffd7",
+        background="#020804",
+        surface="#07140b",
+        panel="#0f2916",
+        success="#00ff41",
+        warning="#a6ff00",
+        error="#ff3333",
+        dark=True,
+    ),
+]
+
+THEME_CYCLE: List[Tuple[str, str, str]] = [
+    ("netprobe-dark", "theme-dark", "NetProbe Dark (Default)"),
+    ("dracula", "theme-dracula", "Dracula"),
+    ("netprobe-cyberpunk", "theme-cyberpunk", "Cyberpunk Neon"),
+    ("netprobe-matrix", "theme-matrix", "Matrix Terminal"),
+    ("nord", "theme-nord", "Arctic Nord"),
+    ("tokyo-night", "theme-tokyo-night", "Tokyo Night"),
+    ("textual-light", "theme-light", "High-Contrast Light"),
+]
+
 
 class NetProbeTUIApp(App):
     """Applicazione TUI moderna Textual per NetProbe Pro."""
@@ -63,6 +119,8 @@ class NetProbeTUIApp(App):
         Binding("s", "start_full_scan", "Completa", show=False),
         Binding("r", "start_quick_scan", "Scansione Rapida"),
         Binding("e", "export_report", "Esporta"),
+        Binding("t", "toggle_theme", "Tema"),
+        Binding("T", "toggle_theme", "Tema", show=False),
         Binding("left", "previous_tab", "Scheda Prec.", show=False),
         Binding("h", "previous_tab", "Scheda Prec.", show=False),
         Binding("right", "next_tab", "Scheda Succ.", show=False),
@@ -88,6 +146,11 @@ class NetProbeTUIApp(App):
         self.auto_scan = auto_scan
         self.is_scanning = False
         self.scan_data = initial_data
+        self._theme_index = 0
+        for custom_theme in CUSTOM_THEMES:
+            self.register_theme(custom_theme)
+        self.theme = THEME_CYCLE[0][0]
+        self.add_class(THEME_CYCLE[0][1])
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -96,6 +159,7 @@ class NetProbeTUIApp(App):
                 yield Button("▶ Avvia Scansione Completa", id="btn-full")
                 yield Button("⚡ Scansione Rapida", id="btn-quick")
                 yield Button("💾 Esporta Report", id="btn-export")
+                yield Button("🎨 Tema (T)", id="btn-theme")
             with Vertical(id="status-container"):
                 yield Label("Pronto. Seleziona un'azione per iniziare.", id="status-label")
                 yield ProgressBar(id="progress-bar", total=100, show_eta=False)
@@ -126,6 +190,28 @@ class NetProbeTUIApp(App):
             self.query_one("#status-label", Label).update("Dati diagnostici caricati con successo.")
         elif self.auto_scan:
             self.action_start_full_scan()
+
+    def watch_theme(self, theme_name: str) -> None:
+        all_theme_classes = [cls for _, cls, _ in THEME_CYCLE]
+        for cls in all_theme_classes:
+            self.remove_class(cls)
+        matched_class = f"theme-{theme_name}"
+        for idx, (t_id, t_cls, _) in enumerate(THEME_CYCLE):
+            if t_id == theme_name:
+                matched_class = t_cls
+                self._theme_index = idx
+                break
+        self.add_class(matched_class)
+        self.refresh_css(animate=False)
+
+    def action_toggle_theme(self) -> None:
+        self._theme_index = (self._theme_index + 1) % len(THEME_CYCLE)
+        theme_id, theme_cls, theme_label = THEME_CYCLE[self._theme_index]
+        self.theme = theme_id
+        try:
+            self.query_one("#status-label", Label).update(f"🎨 Tema grafico attivo: {theme_label}")
+        except Exception:
+            pass
 
     def action_previous_tab(self) -> None:
         tc = self.query_one(TabbedContent)
@@ -206,6 +292,8 @@ class NetProbeTUIApp(App):
             self.action_start_quick_scan()
         elif btn_id == "btn-export":
             self.action_export_report()
+        elif btn_id == "btn-theme":
+            self.action_toggle_theme()
 
     def action_start_full_scan(self):
         if self.is_scanning:

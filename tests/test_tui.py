@@ -363,7 +363,62 @@ class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
                 except OSError:
                     pass
 
+    async def test_tui_active_tab_label_not_occluded(self):
+        """Verifica che l'indicatore della scheda attiva non copra né tronchi il titolo."""
+        from tui.app import NetProbeTUIApp
+        from textual.widgets import Tab, Tabs
+
+        app = NetProbeTUIApp(initial_data=self.eth_data, auto_scan=False)
+        async with app.run_test(size=(120, 40)) as pilot:
+            expected_keywords = [
+                "Sintesi", "Wi-Fi", "Ethernet", "LAN", "WAN",
+                "Performance", "Mezzo Fisico", "IXP", "Dispositivi"
+            ]
+            for idx, keyword in enumerate(expected_keywords, start=1):
+                getattr(app, f"action_tab_{idx}")()
+                await pilot.pause()
+                active_tab = app.query_one("ContentTab.-active", Tab)
+                self.assertGreaterEqual(active_tab.content_size.height, 1)
+                rendered_line = active_tab.render_line(0).text.strip()
+                self.assertIn(keyword, rendered_line)
+
+            # Verifica visibilità anche con focus diretto su Tabs
+            app.query_one(Tabs).focus()
+            await pilot.pause()
+            active_tab = app.query_one("ContentTab.-active", Tab)
+            self.assertGreaterEqual(active_tab.content_size.height, 1)
+            self.assertIn("Dispositivi", active_tab.render_line(0).text.strip())
+
+    async def test_tui_theme_toggle_updates_palette(self):
+        """Verifica che la commutazione del tema aggiorni visibilmente colori, classi CSS e stato."""
+        from tui.app import NetProbeTUIApp
+        from textual.widgets import Label
+
+        app = NetProbeTUIApp(initial_data=self.eth_data, auto_scan=False)
+        async with app.run_test(size=(120, 40)) as pilot:
+            card = app.query_one(".card")
+            initial_theme = app.theme
+            initial_screen_bg = app.screen.styles.background
+            initial_card_bg = card.styles.background
+            self.assertIn("theme-dark", app.classes)
+
+            # Toggle tramite tasto 't'
+            await pilot.press("t")
+            await pilot.pause()
+            self.assertNotEqual(app.theme, initial_theme)
+            self.assertNotEqual(app.screen.styles.background, initial_screen_bg)
+            self.assertNotEqual(card.styles.background, initial_card_bg)
+            self.assertIn("theme-dracula", app.classes)
+            status_text = str(app.query_one("#status-label", Label).render())
+            self.assertIn("Tema grafico attivo", status_text)
+
+            # Toggle tramite azione diretta
+            prev_bg = app.screen.styles.background
+            app.action_toggle_theme()
+            await pilot.pause()
+            self.assertNotEqual(app.screen.styles.background, prev_bg)
+            self.assertIn("theme-cyberpunk", app.classes)
+
 
 if __name__ == "__main__":
     unittest.main()
-
