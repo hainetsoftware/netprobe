@@ -57,7 +57,6 @@ from core.estimators import NetworkEstimator
 from core.validators import validate_scan_results
 from core.provenance import build_field_provenance
 from cli.terminal_ui import TerminalUI
-from tui import start_tui
 
 
 def run_cli_scan(quick: bool = False, full: bool = False, json_output: bool = False, no_color: bool = False, export_path: str = None):
@@ -196,6 +195,17 @@ def main():
         try:
             from tui.app import NetProbeTUIApp
             NetProbeTUIApp(auto_scan=False).run()
+        except ImportError:
+            # Ripiego su modalità CLI se textual o altre dipendenze TUI non sono installate
+            if args.tui:
+                sys.stderr.write("Nota: La dashboard TUI richiede 'textual' (pip install textual).\nPassaggio alla visualizzazione CLI standard...\n\n")
+            run_cli_scan(
+                quick=args.quick,
+                full=args.full,
+                json_output=args.json,
+                no_color=args.no_color,
+                export_path=args.export
+            )
         except Exception:
             # Ripiego pulito su modalità CLI in caso di assenza TTY o terminale non supportato
             run_cli_scan(
