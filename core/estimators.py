@@ -958,12 +958,26 @@ class NetworkEstimator:
         ixp_lat = None
         ixp_lon = None
 
-        ixp_coords = (ixp_data or {}).get("coordinates") or {}
-        if ixp_coords.get("lat") is not None and ixp_coords.get("lon") is not None:
-            ixp_lat = float(ixp_coords["lat"])
-            ixp_lon = float(ixp_coords["lon"])
-        else:
-            ixp_coords_map = {
+        fac_obj = (ixp_data or {}).get("datacenter_facility")
+        if fac_obj and isinstance(fac_obj, dict):
+            coords = fac_obj.get("coordinates") or {}
+            if coords.get("lat") is not None and coords.get("lon") is not None:
+                ixp_lat = float(coords["lat"])
+                ixp_lon = float(coords["lon"])
+            if fac_obj.get("facility_name") and (not ixp_facility or is_unidentified):
+                ixp_facility = fac_obj.get("facility_name")
+            if fac_obj.get("city") and (not ixp_city or is_unidentified):
+                ixp_city = fac_obj.get("city")
+            if fac_obj.get("interconnect_type") and (not peering_type or is_unidentified or "tier" in str(peering_type).lower()):
+                peering_type = fac_obj.get("interconnect_type")
+
+        if ixp_lat is None or ixp_lon is None:
+            ixp_coords = (ixp_data or {}).get("coordinates") or {}
+            if ixp_coords.get("lat") is not None and ixp_coords.get("lon") is not None:
+                ixp_lat = float(ixp_coords["lat"])
+                ixp_lon = float(ixp_coords["lon"])
+            else:
+                ixp_coords_map = {
                 "milano": (45.4642, 9.1028),
                 "roma": (41.8988, 12.5186),
                 "torino": (45.0392, 7.6496),
@@ -1142,6 +1156,7 @@ class NetworkEstimator:
             "ixp_facility": ixp_facility,
             "ixp_city": ixp_city,
             "peering_type": peering_type,
+            "datacenter_facility": fac_obj,
             "straight_line_distance_km": round(straight_dist_km, 1) if straight_dist_km is not None else None,
             "estimated_fiber_path_km": estimated_fiber_km if estimated_fiber_km is not None else None,
             "theoretical_optical_min_rtt_ms": round(optical_min_rtt_ms, 2) if optical_min_rtt_ms is not None else None,

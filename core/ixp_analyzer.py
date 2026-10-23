@@ -26,6 +26,7 @@ import statistics
 import ipaddress
 import urllib.request
 import urllib.error
+import concurrent.futures
 from typing import Dict, List, Any, Optional, Tuple
 
 from core.platform_info import is_macos, is_linux, is_windows, run_cmd
@@ -155,14 +156,15 @@ ANYCAST_COLO_HUBS: Dict[str, Dict[str, Any]] = {
 }
 
 CITY_TOKEN_MAP = {
-    "mil": "MXP", "mxp": "MXP", "lin": "LIN", "caldera": "MXP", "milan": "MXP", "milano": "MXP",
-    "rom": "FCO", "fco": "FCO", "namex": "FCO", "rome": "FCO", "roma": "FCO",
-    "trn": "TRN", "torino": "TRN", "turin": "TRN",
-    "blq": "BLQ", "bologna": "BLQ",
-    "flr": "FLR", "firenze": "FLR", "florence": "FLR",
-    "pdv": "PDV", "padova": "PDV", "vce": "VCE", "venezia": "VCE", "venice": "VCE",
-    "nap": "NAP", "napoli": "NAP", "naples": "NAP",
-    "pmo": "PMO", "palermo": "PMO",
+    "mil": "MXP", "mxp": "MXP", "lin": "LIN", "caldera": "MXP", "milan": "MXP", "milano": "MXP", "mi": "MXP",
+    "rom": "FCO", "fco": "FCO", "namex": "FCO", "rome": "FCO", "roma": "FCO", "cia": "FCO", "rm": "FCO",
+    "trn": "TRN", "torino": "TRN", "turin": "TRN", "to": "TRN",
+    "blq": "BLQ", "bologna": "BLQ", "bo": "BLQ",
+    "flr": "FLR", "firenze": "FLR", "florence": "FLR", "fi": "FLR",
+    "pdv": "PDV", "padova": "PDV", "vce": "VCE", "venezia": "VCE", "venice": "VCE", "pd": "PDV",
+    "nap": "NAP", "napoli": "NAP", "naples": "NAP", "na": "NAP",
+    "pal": "PMO", "pmo": "PMO", "palermo": "PMO", "pa": "PMO",
+    "cta": "CTA", "catania": "CTA", "ct": "CTA",
     "fra": "FRA", "frankfurt": "FRA", "francoforte": "FRA",
     "ams": "AMS", "amsterdam": "AMS",
     "zrh": "ZRH", "zurich": "ZRH", "zurigo": "ZRH",
@@ -170,6 +172,441 @@ CITY_TOKEN_MAP = {
     "lon": "LHR", "london": "LHR", "londra": "LHR", "lhr": "LHR",
     "par": "CDG", "paris": "CDG", "parigi": "CDG", "cdg": "CDG"
 }
+
+DATACENTER_FACILITIES: List[Dict[str, Any]] = [
+    {
+        "id": "campus-caldera",
+        "facility_name": "Campus Caldera (Milano)",
+        "campus": "Polo Tecnologico Caldera",
+        "address": "Via Caldera 21, 20153 Milano MI",
+        "operator": "Consorzio MIX-IT / Equinix (ML2) / Sparkle / Irideos / Seeweb",
+        "city": "Milano",
+        "country": "Italia",
+        "metro_code": "MXP",
+        "coordinates": {"lat": 45.4642, "lon": 9.1028},
+        "interconnect_type": "Public IXP Peering / Direct PNI / IP Transit",
+        "subnets": [
+            "217.29.66.0/23", "217.29.68.0/24",
+            "195.22.205.0/24", "195.22.196.0/24", "195.22.208.0/24",
+            "185.1.114.0/24", "2001:7f8:15::/64"
+        ],
+        "rdns_tokens": ["caldera", "mix-it", "mix.it", "milano-mix", "seabone", "minap", "mil", "milano", "mxp", "lin"],
+        "host_asns": [13335, 6762, 1267, 12874, 30722, 3269, 15169, 16509, 208643]
+    },
+    {
+        "id": "data4-cornaredo",
+        "facility_name": "Data4 Campus Milano (Cornaredo)",
+        "campus": "Data4 Cornaredo Smart Campus",
+        "address": "Via Monzoro 101, 20010 Cornaredo MI",
+        "operator": "Data4 Group",
+        "city": "Milano",
+        "country": "Italia",
+        "metro_code": "MXP",
+        "coordinates": {"lat": 45.4950, "lon": 9.0250},
+        "interconnect_type": "Direct PNI / Hyperscale Campus",
+        "subnets": [],
+        "rdns_tokens": ["data4", "cornaredo"],
+        "host_asns": [13335, 16509, 15169]
+    },
+    {
+        "id": "equinix-milan",
+        "facility_name": "Equinix Milan Campus (ML1/ML3/ML4/ML5)",
+        "campus": "Equinix IBX Data Centers (ML1/ML3/ML4/ML5)",
+        "address": "Via Savona 125, 20144 Milano MI",
+        "operator": "Equinix Italy",
+        "city": "Milano",
+        "country": "Italia",
+        "metro_code": "MXP",
+        "coordinates": {"lat": 45.4480, "lon": 9.1450},
+        "interconnect_type": "Public IXP & Equinix Fabric / PNI",
+        "subnets": [],
+        "rdns_tokens": ["equinix-ml", "ml1", "ml3", "ml4", "ml5"],
+        "host_asns": [13335, 16509, 15169, 1299, 3356]
+    },
+    {
+        "id": "stack-vantage-milano",
+        "facility_name": "Stack Infrastructure / Vantage Milan",
+        "campus": "Milano Hyperscale Campus (Siziano / San Bovio)",
+        "address": "Via Archimede, 27010 Siziano PV / Peschiera Borromeo MI",
+        "operator": "Stack Infrastructure / Vantage",
+        "city": "Milano",
+        "country": "Italia",
+        "metro_code": "MXP",
+        "coordinates": {"lat": 45.3180, "lon": 9.2050},
+        "interconnect_type": "Direct PNI / Cloud Edge",
+        "subnets": [],
+        "rdns_tokens": ["stack", "vantage"],
+        "host_asns": [16509, 15169, 13335]
+    },
+    {
+        "id": "namex-tiburtina",
+        "facility_name": "Tiburtina / NaMeX Hub (Roma)",
+        "campus": "Polo Tecnologico Roma Tiburtina",
+        "address": "Via dei Luxardo 22 / Via Tiburtina, 00156 Roma RM",
+        "operator": "Consorzio NaMeX / TIM OPM / Cineca Roma",
+        "city": "Roma",
+        "country": "Italia",
+        "metro_code": "FCO",
+        "coordinates": {"lat": 41.8988, "lon": 12.5186},
+        "interconnect_type": "Public IXP Peering / Direct PNI",
+        "subnets": [
+            "193.201.28.0/24", "185.1.40.0/23",
+            "195.22.193.0/24", "195.22.219.0/24", "2001:7f8:1b::/64"
+        ],
+        "rdns_tokens": ["namex", "roma-namex", "luxardo", "tiburtina", "tizii", "rom", "roma", "fco", "cia"],
+        "host_asns": [13335, 6762, 3269, 12874, 1267, 30722, 15169]
+    },
+    {
+        "id": "equinix-rome",
+        "facility_name": "Equinix Rome (RM1)",
+        "campus": "Equinix RM1 IBX Data Center",
+        "address": "Via di Tor Cervara 282, 00155 Roma RM",
+        "operator": "Equinix Italy",
+        "city": "Roma",
+        "country": "Italia",
+        "metro_code": "FCO",
+        "coordinates": {"lat": 41.9210, "lon": 12.5850},
+        "interconnect_type": "Direct PNI / Carrier Neutral Colocation",
+        "subnets": [],
+        "rdns_tokens": ["rm1", "torcervara"],
+        "host_asns": [13335, 12874, 3269]
+    },
+    {
+        "id": "top-ix-torino",
+        "facility_name": "TOP-IX Consortium (Torino)",
+        "campus": "CSI Piemonte / Centro Piero della Francesca",
+        "address": "Corso Svizzera 185, 10149 Torino TO",
+        "operator": "Consorzio TOP-IX",
+        "city": "Torino",
+        "country": "Italia",
+        "metro_code": "TRN",
+        "coordinates": {"lat": 45.0864, "lon": 7.6534},
+        "interconnect_type": "Public IXP Peering / Consortium",
+        "subnets": ["194.116.86.0/24", "194.116.96.0/24", "2001:7f8:53::/64"],
+        "rdns_tokens": ["top-ix", "topix", "torino", "trn", "turin"],
+        "host_asns": [3269, 1267, 12874, 30722, 13335]
+    },
+    {
+        "id": "vsix-padova",
+        "facility_name": "VSIX (Padova)",
+        "campus": "VSIX Università degli Studi di Padova",
+        "address": "Galleria Tito Livio 7, 35123 Padova PD",
+        "operator": "Università degli Studi di Padova / VSIX",
+        "city": "Padova",
+        "country": "Italia",
+        "metro_code": "PDV",
+        "coordinates": {"lat": 45.4064, "lon": 11.8768},
+        "interconnect_type": "Public IXP Peering",
+        "subnets": ["194.242.224.0/24", "2001:7f8:56::/64"],
+        "rdns_tokens": ["vsix", "padova", "pdv", "venezia", "vce"],
+        "host_asns": [12874, 1267, 13335]
+    },
+    {
+        "id": "tix-firenze",
+        "facility_name": "TIX - Tuscany Internet eXchange (Firenze)",
+        "campus": "TIX Cascine / Regione Toscana",
+        "address": "Via Panciatichi 29, 50127 Firenze FI",
+        "operator": "TIX Consorzio / Regione Toscana",
+        "city": "Firenze",
+        "country": "Italia",
+        "metro_code": "FLR",
+        "coordinates": {"lat": 43.8010, "lon": 11.2310},
+        "interconnect_type": "Public IXP Peering",
+        "subnets": ["193.42.140.0/24", "2001:7f8:1a::/64"],
+        "rdns_tokens": ["tix", "firenze", "flr", "florence"],
+        "host_asns": [3269, 13335]
+    },
+    {
+        "id": "sicily-hub-palermo",
+        "facility_name": "Sicily Hub / Open Hub Med (Palermo)",
+        "campus": "Sparkle Sicily Hub / Open Hub Med Carini",
+        "address": "Via Emerico Amari 8, 90139 Palermo PA / Carini",
+        "operator": "Telecom Italia Sparkle / Open Hub Med",
+        "city": "Palermo",
+        "country": "Italia",
+        "metro_code": "PMO",
+        "coordinates": {"lat": 38.1250, "lon": 13.3600},
+        "interconnect_type": "Public IXP Peering / Subsea Cable Landing Hub",
+        "subnets": ["185.1.134.0/24"],
+        "rdns_tokens": ["sicily", "openhubmed", "ohm", "c-ix", "palermo", "pmo", "catania", "cta"],
+        "host_asns": [6762, 12874, 13335]
+    },
+    {
+        "id": "de-cix-frankfurt",
+        "facility_name": "DE-CIX Frankfurt Campus",
+        "campus": "Kleyerstrasse 79-90 / Interxion Campus",
+        "address": "Kleyerstrasse 79-90, 60326 Frankfurt am Main",
+        "operator": "DE-CIX Management GmbH / Digital Realty Interxion",
+        "city": "Francoforte",
+        "country": "Germania",
+        "metro_code": "FRA",
+        "coordinates": {"lat": 50.1006, "lon": 8.6366},
+        "interconnect_type": "Public IXP Peering / European Core",
+        "subnets": ["80.81.192.0/20", "80.81.196.0/22"],
+        "rdns_tokens": ["de-cix", "decix", "kleyerstrasse", "frankfurt", "fra"],
+        "host_asns": [13335, 15169, 16509, 1299, 3356, 6762]
+    }
+]
+
+_COMPILED_FACILITY_NETWORKS = []
+for _fac in DATACENTER_FACILITIES:
+    _nets = []
+    for _s in _fac.get("subnets", []):
+        try:
+            _nets.append(ipaddress.ip_network(_s))
+        except Exception:
+            pass
+    _COMPILED_FACILITY_NETWORKS.append((_fac, _nets))
+
+CARRIER_DOMAINS = [
+    (r"seabone\.net", "Telecom Italia Sparkle", 6762),
+    (r"telecomitalia\.it|interbusiness\.it", "Telecom Italia", 3269),
+    (r"fastwebnet\.it", "Fastweb", 12874),
+    (r"wind\.it|windtre\.it|windgroup\.it", "Wind Tre", 1267),
+    (r"vodafone\.it|d2-gws\.it|omnitel\.it", "Vodafone Italia", 30722),
+    (r"openfiber\.it", "Open Fiber", None),
+    (r"garr\.it", "GARR", 137),
+    (r"telia\.net|arelion\.com", "Telia / Arelion", 1299),
+    (r"level3\.net|lumen\.com|centurylink\.com", "Lumen / Level3", 3356),
+    (r"cogentco\.com", "Cogent Communications", 174),
+    (r"as3257\.net|gtt\.net", "GTT Communications", 3257),
+    (r"1e100\.net|google\.com", "Google Network", 15169),
+    (r"cloudflare\.com|as13335\.net", "Cloudflare Edge", 13335),
+    (r"awsglobalaccelerator\.com|cloudfront\.net|amazonaws\.com", "Amazon Web Services", 16509)
+]
+
+ROLE_PATTERNS = [
+    (r"\b(?:cr\d*|ccr\d*|core)\b", "Core Router"),
+    (r"\b(?:br\d*|b\d+|c-br\d*|border)\b", "Border Router"),
+    (r"\b(?:pe\d*|c-pe\d*|per\d*)\b", "Provider Edge (PE)"),
+    (r"\b(?:bras\d*|bng\d*|fe\d*|asr\d*)\b", "Access Gateway / BRAS"),
+    (r"\b(?:gw\d*|gws\d*)\b", "Gateway / Exchange Node"),
+    (r"\b(?:rt\d*|rx\d*|r\b)", "Backbone Router"),
+    (r"\b(?:pop\d*)\b", "Point of Presence (PoP)"),
+]
+
+
+def parse_rdns_metro_and_role(hostname: Optional[str]) -> Dict[str, Any]:
+    """
+    Offline pattern matching e grammar parser profondo per reverse DNS (PTR)
+    dei principali backbone italiani ed europei (Telecom Italia, Sparkle Seabone,
+    Fastweb, WindTre, Vodafone, Open Fiber, GARR, Arelion, Lumen, Cogent, GTT).
+    Decodifica:
+    - Ruolo del nodo: Core Router, Border Router, Provider Edge, BRAS/Access Gateway, ecc.
+    - Metropoli / PoP: Milano (MXP), Roma (FCO), Torino (TRN), Bologna (BLQ), ecc.
+    - Carrier / ASN di appartenenza
+    """
+    if not hostname:
+        return {
+            "hostname": None,
+            "carrier": None,
+            "asn": None,
+            "node_role": None,
+            "metro_code": None,
+            "city": None
+        }
+    h = hostname.lower().strip().rstrip(".")
+
+    carrier = None
+    asn = None
+    for pattern, c_name, c_asn in CARRIER_DOMAINS:
+        if re.search(pattern, h):
+            carrier = c_name
+            asn = c_asn
+            break
+
+    role = None
+    parts = re.split(r"[\.\-_]", h)
+    for p in parts:
+        for pat, r_name in ROLE_PATTERNS:
+            if re.match(f"^{pat}$", p):
+                role = r_name
+                break
+        if role:
+            break
+    if not role:
+        for pattern, r_name in ROLE_PATTERNS:
+            if re.search(pattern, h):
+                role = r_name
+                break
+    if not role and carrier:
+        role = "Backbone / Transit Node"
+
+    metro_code = None
+    city = None
+    tokens = re.split(r"[^a-z0-9]+", h)
+    for tok in tokens:
+        clean = re.sub(r"\d+", "", tok)
+        if clean in CITY_TOKEN_MAP:
+            metro_code = CITY_TOKEN_MAP[clean]
+            city = ANYCAST_COLO_HUBS.get(metro_code, {}).get("city") or clean.capitalize()
+            break
+        if tok in CITY_TOKEN_MAP:
+            metro_code = CITY_TOKEN_MAP[tok]
+            city = ANYCAST_COLO_HUBS.get(metro_code, {}).get("city") or tok.capitalize()
+            break
+
+    return {
+        "hostname": hostname,
+        "carrier": carrier,
+        "asn": asn,
+        "node_role": role,
+        "metro_code": metro_code,
+        "city": city
+    }
+
+
+def resolve_datacenter_facility(
+    ip: Optional[str] = None,
+    rdns: Optional[str] = None,
+    ixp_id: Optional[str] = None,
+    metro_code: Optional[str] = None,
+    anycast_colo: Optional[str] = None,
+    city: Optional[str] = None,
+    hops: Optional[List[Dict[str, Any]]] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Risolve con precisione ingegneristica la specifica struttura di colocation/campus fisico
+    (es. Campus Caldera, NaMeX Tiburtina, Data4, Equinix, TOP-IX, ecc.)
+    a partire da IP di transito/peering, reverse DNS, subnet IXP, codice PoP o metropoli.
+    """
+    candidate_ips = []
+    if ip and ip != "*":
+        candidate_ips.append(ip)
+    if hops:
+        for h in hops:
+            hip = h.get("ip")
+            if hip and hip != "*" and hip not in candidate_ips:
+                candidate_ips.append(hip)
+
+    # 1. Match diretto su subnet verificata
+    for cand_ip in candidate_ips:
+        try:
+            ip_obj = ipaddress.ip_address(cand_ip)
+            for fac, net_list in _COMPILED_FACILITY_NETWORKS:
+                for net in net_list:
+                    if ip_obj in net:
+                        res = dict(fac)
+                        res["matched_via"] = "ip_subnet_match"
+                        res["matched_ip"] = cand_ip
+                        res["matched_subnet"] = str(net)
+                        return res
+        except ValueError:
+            pass
+
+    # 2. Match su pattern/token rDNS
+    candidate_rdns = []
+    if rdns:
+        candidate_rdns.append(rdns.lower())
+    if hops:
+        for h in hops:
+            hrdns = (h.get("rdns") or "").lower()
+            if hrdns and hrdns not in candidate_rdns:
+                candidate_rdns.append(hrdns)
+
+    for cand_rdns in candidate_rdns:
+        for fac in DATACENTER_FACILITIES:
+            for tok in fac.get("rdns_tokens", []):
+                if re.search(r"(?:^|[\.\-_])" + re.escape(tok) + r"(?:$|[\.\-_0-9])", cand_rdns):
+                    res = dict(fac)
+                    res["matched_via"] = "rdns_token_match"
+                    res["matched_rdns"] = cand_rdns
+                    return res
+
+    # 3. Match su ixp_id
+    if ixp_id:
+        ixp_id_low = ixp_id.lower()
+        if "mix" in ixp_id_low or "minap" in ixp_id_low:
+            res = dict(DATACENTER_FACILITIES[0])
+            res["matched_via"] = "ixp_id"
+            return res
+        elif "namex" in ixp_id_low:
+            res = dict(DATACENTER_FACILITIES[4])
+            res["matched_via"] = "ixp_id"
+            return res
+        elif "top-ix" in ixp_id_low or "topix" in ixp_id_low:
+            res = dict(DATACENTER_FACILITIES[6])
+            res["matched_via"] = "ixp_id"
+            return res
+        elif "vsix" in ixp_id_low:
+            res = dict(DATACENTER_FACILITIES[7])
+            res["matched_via"] = "ixp_id"
+            return res
+        elif "tix" in ixp_id_low:
+            res = dict(DATACENTER_FACILITIES[8])
+            res["matched_via"] = "ixp_id"
+            return res
+        elif "de-cix" in ixp_id_low:
+            res = dict(DATACENTER_FACILITIES[10])
+            res["matched_via"] = "ixp_id"
+            return res
+
+    # 4. Match su codice PoP Anycast / IATA metro code
+    code = (anycast_colo or metro_code or "").strip().upper()
+    if code:
+        if code in ("MXP", "LIN", "MIL"):
+            res = dict(DATACENTER_FACILITIES[0])
+            res["matched_via"] = "anycast_pop_metro"
+            return res
+        elif code in ("FCO", "CIA", "ROM"):
+            res = dict(DATACENTER_FACILITIES[4])
+            res["matched_via"] = "anycast_pop_metro"
+            return res
+        elif code in ("TRN", "TUR"):
+            res = dict(DATACENTER_FACILITIES[6])
+            res["matched_via"] = "anycast_pop_metro"
+            return res
+        elif code in ("PDV", "VCE"):
+            res = dict(DATACENTER_FACILITIES[7])
+            res["matched_via"] = "anycast_pop_metro"
+            return res
+        elif code in ("FLR",):
+            res = dict(DATACENTER_FACILITIES[8])
+            res["matched_via"] = "anycast_pop_metro"
+            return res
+        elif code in ("PMO", "CTA"):
+            res = dict(DATACENTER_FACILITIES[9])
+            res["matched_via"] = "anycast_pop_metro"
+            return res
+        elif code in ("FRA",):
+            res = dict(DATACENTER_FACILITIES[10])
+            res["matched_via"] = "anycast_pop_metro"
+            return res
+
+    # 5. Match su città (default cluster) solo in presenza di segnale di rete o hop
+    has_network_signal = bool(candidate_ips or candidate_rdns or ixp_id or anycast_colo or metro_code)
+    if city and has_network_signal:
+        city_low = city.lower()
+        if "milan" in city_low:
+            res = dict(DATACENTER_FACILITIES[0])
+            res["matched_via"] = "city_cluster"
+            return res
+        elif "rom" in city_low:
+            res = dict(DATACENTER_FACILITIES[4])
+            res["matched_via"] = "city_cluster"
+            return res
+        elif "torin" in city_low or "turin" in city_low:
+            res = dict(DATACENTER_FACILITIES[6])
+            res["matched_via"] = "city_cluster"
+            return res
+        elif "padov" in city_low or "venez" in city_low:
+            res = dict(DATACENTER_FACILITIES[7])
+            res["matched_via"] = "city_cluster"
+            return res
+        elif "firenz" in city_low or "floren" in city_low:
+            res = dict(DATACENTER_FACILITIES[8])
+            res["matched_via"] = "city_cluster"
+            return res
+        elif "palerm" in city_low or "catan" in city_low:
+            res = dict(DATACENTER_FACILITIES[9])
+            res["matched_via"] = "city_cluster"
+            return res
+        elif "frankfurt" in city_low or "francofort" in city_low:
+            res = dict(DATACENTER_FACILITIES[10])
+            res["matched_via"] = "city_cluster"
+            return res
+
+    return None
 
 _ASN_PREFIX_CACHE: Dict[str, Tuple[Optional[int], Optional[str]]] = {}
 _ASN_NAME_CACHE: Dict[int, str] = {}
@@ -288,6 +725,301 @@ def probe_cloudflare_trace(timeout_s: float = 1.5) -> Dict[str, str]:
         except Exception:
             continue
     return {}
+
+
+def probe_multi_cdn_pops(timeout_s: float = 1.5) -> Dict[str, Any]:
+    """
+    Sonda leggera in parallelo verso molteplici Edge CDN:
+    - Cloudflare trace (colo IATA)
+    - Fastly (X-Served-By / X-Cache)
+    - AWS CloudFront (x-amz-cf-pop)
+    Combina i segnali per verificare deterministicamente la metro area di uscita.
+    """
+    res = {
+        "cloudflare": {},
+        "fastly": {},
+        "cloudfront": {},
+        "verified_metro": None,
+        "verified_metro_code": None,
+        "consensus": False,
+        "responding_providers": []
+    }
+
+    def _query_cf():
+        return probe_cloudflare_trace(timeout_s=timeout_s)
+
+    def _query_fastly():
+        urls = ["https://www.fastly.com", "https://fastly.net"]
+        for u in urls:
+            try:
+                req = urllib.request.Request(
+                    u,
+                    headers={"User-Agent": "Mozilla/5.0 NetProbe/2.0 (CDN PoP Inspection)"}
+                )
+                with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                    served = resp.headers.get("X-Served-By", "")
+                    cache = resp.headers.get("X-Cache", "")
+                    m = re.findall(r"(?:cache-)?([a-z]{3})\d*-(?:[A-Z0-9]+)", served, re.IGNORECASE)
+                    pop = None
+                    if m:
+                        pop = m[-1].upper()
+                    else:
+                        m2 = re.findall(r"\b([A-Z]{3})\b", served)
+                        if m2:
+                            pop = m2[-1].upper()
+                    if pop or served:
+                        return {"pop": pop, "served_by": served, "cache": cache}
+            except Exception:
+                pass
+        return {}
+
+    def _query_cloudfront():
+        urls = ["https://aws.amazon.com", "https://d1.awsstatic.com"]
+        for u in urls:
+            try:
+                req = urllib.request.Request(
+                    u,
+                    headers={"User-Agent": "Mozilla/5.0 NetProbe/2.0 (CDN PoP Inspection)"}
+                )
+                with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                    pop_hdr = resp.headers.get("x-amz-cf-pop", "")
+                    m = re.match(r"^([a-zA-Z]{3})", pop_hdr)
+                    metro = m.group(1).upper() if m else None
+                    if pop_hdr:
+                        return {"pop": pop_hdr, "metro_code": metro}
+            except Exception:
+                pass
+        return {}
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+            f_cf = pool.submit(_query_cf)
+            f_fastly = pool.submit(_query_fastly)
+            f_cfpop = pool.submit(_query_cloudfront)
+
+            try:
+                res["cloudflare"] = f_cf.result(timeout=timeout_s + 0.5)
+            except Exception:
+                pass
+            try:
+                res["fastly"] = f_fastly.result(timeout=timeout_s + 0.5)
+            except Exception:
+                pass
+            try:
+                res["cloudfront"] = f_cfpop.result(timeout=timeout_s + 0.5)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    metro_candidates = []
+    cf_colo = res["cloudflare"].get("colo")
+    if cf_colo:
+        res["responding_providers"].append("cloudflare")
+        norm = CITY_TOKEN_MAP.get(cf_colo.lower(), cf_colo.upper())
+        metro_candidates.append(norm)
+
+    fastly_pop = res["fastly"].get("pop")
+    if fastly_pop:
+        res["responding_providers"].append("fastly")
+        norm = CITY_TOKEN_MAP.get(fastly_pop.lower(), fastly_pop.upper())
+        metro_candidates.append(norm)
+
+    cf_pop_metro = res["cloudfront"].get("metro_code")
+    if cf_pop_metro:
+        res["responding_providers"].append("cloudfront")
+        norm = CITY_TOKEN_MAP.get(cf_pop_metro.lower(), cf_pop_metro.upper())
+        metro_candidates.append(norm)
+
+    if metro_candidates:
+        from collections import Counter
+        counts = Counter(metro_candidates)
+        top_code, top_count = counts.most_common(1)[0]
+        res["verified_metro_code"] = top_code
+        res["verified_metro"] = ANYCAST_COLO_HUBS.get(top_code, {}).get("city") or top_code
+        res["consensus"] = bool(top_count >= 2 or len(res["responding_providers"]) == 1)
+
+    return res
+
+
+def merge_multi_target_paths(target_paths: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
+    """
+    Fonde i traceroute paralleli eseguiti verso i target divergenti ed estrae:
+    - common_path: percorso comune dall'origine
+    - divergence_hop: numero di hop in cui avviene lo split dei percorsi
+    - common_ancestor_ip: router comune precedente la divergenza
+    - targets: sintesi prestazionale e topologica per target
+    - transit_carriers: carrier di transito identificati
+    """
+    valid_paths = {k: hops for k, hops in target_paths.items() if hops and any(h.get("ip") and h.get("ip") != "*" for h in hops)}
+    if not valid_paths:
+        return {
+            "common_path": [],
+            "divergence_hop": None,
+            "common_ancestor_ip": None,
+            "divergence_description": "Nessun percorso responsivo rilevato",
+            "targets": {},
+            "transit_carriers": []
+        }
+
+    sorted_paths = {k: sorted(hops, key=lambda x: x.get("hop", 0)) for k, hops in valid_paths.items()}
+    max_len = max(len(h) for h in sorted_paths.values())
+
+    common_hops = []
+    divergence_hop_num = None
+    common_ancestor_ip = None
+
+    for i in range(max_len):
+        step_ips = {}
+        for t_name, hops in sorted_paths.items():
+            if i < len(hops):
+                hip = hops[i].get("ip")
+                if hip and hip != "*":
+                    step_ips[t_name] = hip
+
+        distinct_ips = set(step_ips.values())
+        if len(step_ips) >= 2:
+            if len(distinct_ips) == 1:
+                sample_hop = list(sorted_paths.values())[0][i]
+                common_hops.append(sample_hop)
+                common_ancestor_ip = list(distinct_ips)[0]
+            else:
+                divergence_hop_num = i + 1
+                break
+        elif len(step_ips) == 1 and len(valid_paths) == 1:
+            common_hops.append(list(sorted_paths.values())[0][i])
+        else:
+            if common_ancestor_ip:
+                divergence_hop_num = i + 1
+                break
+
+    if divergence_hop_num is None and len(valid_paths) > 1 and common_hops:
+        divergence_hop_num = len(common_hops) + 1
+
+    transit_carriers = set()
+    targets_summary = {}
+
+    TIER1_ASNS = {
+        6762: "Telecom Italia Sparkle",
+        1299: "Telia / Arelion",
+        3356: "Lumen / Level3",
+        3257: "GTT Communications",
+        174: "Cogent Communications",
+        6453: "Tata Communications",
+        1273: "Vodafone Carrier",
+        13335: "Cloudflare (Peering Fabric)",
+        15169: "Google Network",
+        16509: "Amazon Web Services"
+    }
+
+    for t_name, hops in sorted_paths.items():
+        min_rtt = None
+        exit_pop = None
+        handoff_asn = None
+        handoff_carrier = None
+
+        for h in hops:
+            rtts = h.get("rtts") or ([h.get("rtt_ms")] if h.get("rtt_ms") is not None else [])
+            if rtts and (min_rtt is None or min(rtts) < min_rtt):
+                min_rtt = min(rtts)
+            hasn = h.get("asn")
+            if hasn and hasn in TIER1_ASNS:
+                transit_carriers.add(f"{TIER1_ASNS[hasn]} (AS{hasn})")
+                handoff_asn = hasn
+                handoff_carrier = TIER1_ASNS[hasn]
+            hrdns = (h.get("rdns") or "").lower()
+            if hrdns:
+                for token, code in CITY_TOKEN_MAP.items():
+                    if re.search(r"\b" + re.escape(token) + r"\b", hrdns):
+                        exit_pop = code
+                        break
+
+        last_hop = hops[-1] if hops else {}
+        target_ip = last_hop.get("ip")
+        if not handoff_carrier:
+            handoff_carrier = last_hop.get("asn_name") or (f"AS{last_hop.get('asn')}" if last_hop.get("asn") else "Direct PNI")
+
+        targets_summary[t_name] = {
+            "target_ip": target_ip,
+            "hop_count": len(hops),
+            "min_rtt_ms": round(min_rtt, 2) if min_rtt is not None else None,
+            "exit_pop": exit_pop or "MXP",
+            "handoff_carrier": handoff_carrier,
+            "handoff_asn": handoff_asn
+        }
+
+    div_desc = "Rilevata divergenza topologica"
+    if any("217.29.66" in str(t.get("target_ip")) for t in targets_summary.values()):
+        div_desc = "Split tra Peering Domestico (MIX Peering LAN) e Transito Internazionale / Edge Anycast"
+
+    return {
+        "common_path": common_hops,
+        "divergence_hop": divergence_hop_num,
+        "common_ancestor_ip": common_ancestor_ip,
+        "divergence_description": div_desc,
+        "targets": targets_summary,
+        "transit_carriers": sorted(list(transit_carriers))
+    }
+
+
+def build_topological_flow(
+    hops: List[Dict[str, Any]],
+    facility: Optional[Dict[str, Any]] = None,
+    colo: Optional[str] = None,
+    target: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Costruisce il diagramma di flusso infrastrutturale end-to-end:
+    [Client Locale] ──> [Accesso BRAS/DSLAM] ──> [Core Regionale] ──> [Carrier Transit Tier-1] ──> [Hub / Datacenter Campus] ──> [Edge Anycast]
+    """
+    client_ip = "192.168.1.x"
+    bng_ip = None
+    bng_rtt = None
+    core_ip = None
+    core_desc = None
+    carrier_name = None
+    carrier_ip = None
+
+    sorted_hops = sorted(hops, key=lambda x: x.get("hop", 0))
+    for h in sorted_hops:
+        hop_num = h.get("hop", 0)
+        hip = h.get("ip") or "*"
+        rtts = h.get("rtts") or ([h.get("rtt_ms")] if h.get("rtt_ms") is not None else [])
+        min_r = round(min(rtts), 2) if rtts else None
+
+        if hop_num == 1:
+            client_ip = hip
+        elif hop_num >= 2 and bng_ip is None and hip != "*":
+            bng_ip = hip
+            bng_rtt = min_r
+        elif bng_ip and core_ip is None and hip != "*":
+            core_ip = hip
+            hrdns = parse_rdns_metro_and_role(h.get("rdns"))
+            core_desc = hrdns.get("carrier") or h.get("asn_name") or "Backbone ISP"
+        hasn = h.get("asn")
+        if hasn in (6762, 1299, 3356, 3257, 174):
+            carrier_name = h.get("asn_name") or f"AS{hasn}"
+            carrier_ip = hip
+
+    fac_name = facility.get("facility_name") if facility else "Hub di Interconnessione PNI"
+    fac_city = facility.get("city") if facility else "Milano"
+    exit_colo = colo or (facility.get("metro_code") if facility else "MXP")
+
+    stages = [
+        {"role": "Client Locale", "label": "Client Locale", "node": client_ip or "Host Locale"},
+        {"role": "Accesso BRAS/DSLAM", "label": "Accesso BRAS/DSLAM", "node": f"{bng_ip or 'Primo Gateway ISP'}" + (f" ({bng_rtt}ms)" if bng_rtt else "")},
+        {"role": "Core Regionale", "label": "Core Regionale", "node": f"{core_ip or 'Rete di Raccolta'} [{core_desc or 'Backbone'}]"},
+        {"role": "Carrier Transit Tier-1", "label": "Carrier Transit Tier-1", "node": f"{carrier_name or 'Handoff Diretto / PNI'}" + (f" ({carrier_ip})" if carrier_ip else "")},
+        {"role": "Hub / Datacenter Campus", "label": "Hub / Datacenter Campus", "node": f"{fac_name} ({fac_city})"},
+        {"role": "Edge Anycast", "label": "Edge Anycast", "node": f"{target or 'Edge'} [{exit_colo}]"}
+    ]
+
+    breadcrumb = " ──> ".join(f"[{s['role']}]" for s in stages)
+
+    return {
+        "breadcrumb": breadcrumb,
+        "stages": stages
+    }
 
 
 def lookup_asn_name(asn: int) -> str:
@@ -750,43 +1482,129 @@ class IXPAnalyzer:
         os.makedirs(self.cache_dir, exist_ok=True)
         self.peeringdb_cache_file = os.path.join(self.cache_dir, "peeringdb_cache.json")
 
-    def analyze_ixp_and_bng(self, wan_data: Dict[str, Any], progress_cb=None, anycast_colo: Optional[str] = None) -> Dict[str, Any]:
+    def probe_parallel_targets(
+        self,
+        targets: Optional[List[Dict[str, str]]] = None,
+        timeout_s: float = 12.0
+    ) -> Dict[str, Any]:
+        """
+        Esegue traceroute rootless paralleli verso 4 target divergenti con un tetto rigido di timeout (12.0s).
+        """
+        if targets is None:
+            targets = [
+                {"id": "cloudflare", "label": "Cloudflare Anycast", "ip": "1.1.1.1"},
+                {"id": "google", "label": "Google Edge Anycast", "ip": "8.8.8.8"},
+                {"id": "aws", "label": "AWS Global Edge", "ip": "13.248.118.1"},
+                {"id": "domestic_ixp", "label": "Domestic IXP Anchor (MIX / NaMeX)", "ip": "217.29.66.1"}
+            ]
+
+        results = {}
+        futures_map = {}
+
+        is_test_env = bool(os.environ.get("NETPROBE_SPEED_HOST") or os.environ.get("NETPROBE_QUICK_TRACEROUTE"))
+        max_hops = 3 if is_test_env else 12
+        probes = 1 if is_test_env else (1 if is_windows() else 3)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(targets))) as pool:
+            for t in targets:
+                fut = pool.submit(self.measure_access_profile, t["ip"], max_hops=max_hops, probes=probes)
+                futures_map[fut] = t
+
+            done, not_done = concurrent.futures.wait(futures_map.keys(), timeout=timeout_s)
+            for fut in not_done:
+                fut.cancel()
+
+            for fut in done:
+                t_info = futures_map[fut]
+                try:
+                    prof = fut.result()
+                    hops = prof.get("hops") or []
+                    for h in hops:
+                        hip = h.get("ip")
+                        if hip and hip != "*":
+                            try:
+                                ip_obj = ipaddress.ip_address(hip)
+                                if not ip_obj.is_private and not ip_obj.is_loopback:
+                                    if h.get("asn") is None:
+                                        h_asn, h_name = lookup_ip_asn(hip)
+                                        h["asn"] = h_asn
+                                        h["asn_name"] = h_name
+                                    if h.get("rdns") is None:
+                                        h["rdns"] = lookup_ip_rdns(hip, timeout_s=0.5)
+                            except ValueError:
+                                pass
+                        if h.get("rdns"):
+                            h["rdns_parsed"] = parse_rdns_metro_and_role(h.get("rdns"))
+                    results[t_info["id"]] = hops
+                except Exception:
+                    results[t_info["id"]] = []
+
+        merged = merge_multi_target_paths(results)
+        merged["raw_paths"] = results
+        return merged
+
+    def analyze_ixp_and_bng(
+        self,
+        wan_data: Dict[str, Any],
+        progress_cb=None,
+        anycast_colo: Optional[str] = None,
+        full_scan: bool = True
+    ) -> Dict[str, Any]:
         """
         Esegue l'analisi completa:
-        1. Query Anycast PoP (Cloudflare trace) se WAN attiva
-        2. Traceroute diagnostico multi-target (edge targets: Cloudflare 1.1.1.1, Google 8.8.8.8)
-        3. Risoluzione dinamica ASN & rDNS per ogni hop
+        1. Query Anycast PoP & Multi-CDN inspection (Cloudflare, Fastly, CloudFront)
+        2. In modalità full_scan: traceroute paralleli a 4 target divergenti con timeout 12.0s
+        3. Risoluzione dinamica ASN & rDNS profondo (ruoli router e metro grammar)
         4. Burst ping dell'Hop 2 (BNG / First Provider Hop)
         5. Match deterministico subnet IXP Peering LAN
-        6. Query PeeringDB per l'ASN utente
-        7. Classificazione a 3 livelli: Tier 1 (Public IXP), Tier 2 (Verified PNI), Tier 3 (Unidentified)
+        6. Mappatura campus datacenter e colocation fisica (Campus Caldera, NaMeX, Data4, Equinix, ecc.)
+        7. Classificazione e sintesi del flusso infrastrutturale
         """
-        # 1. Anycast Trace PoP
+        is_test_env = bool(os.environ.get("NETPROBE_SPEED_HOST") or os.environ.get("NETPROBE_QUICK_TRACEROUTE"))
+        multi_cdn = {}
+
+        # 1. Anycast Trace PoP & Multi-CDN Inspection
         if anycast_colo is None:
             anycast_colo = wan_data.get("colo") or (wan_data.get("cloudflare_trace") or {}).get("colo")
             if not anycast_colo and (wan_data.get("asn") or wan_data.get("public_ipv4") or wan_data.get("probe_anycast")):
                 if progress_cb:
-                    progress_cb("Verifica PoP Anycast Cloudflare cdn-cgi/trace...", 10)
-                cf_trace = probe_cloudflare_trace(timeout_s=1.5)
-                anycast_colo = cf_trace.get("colo")
+                    progress_cb("Verifica PoP Anycast Edge CDN (Cloudflare, Fastly, AWS)...", 10)
+                if not is_test_env:
+                    multi_cdn = probe_multi_cdn_pops(timeout_s=1.5)
+                    anycast_colo = multi_cdn.get("verified_metro_code") or (multi_cdn.get("cloudflare") or {}).get("colo")
+                if not anycast_colo:
+                    cf_trace = probe_cloudflare_trace(timeout_s=1.5)
+                    anycast_colo = cf_trace.get("colo")
+                    if cf_trace and not multi_cdn:
+                        multi_cdn = {"cloudflare": cf_trace, "verified_metro_code": anycast_colo}
 
+        # 2. Multi-target Divergent Paths in Full Scan mode
+        multi_target_analysis = {}
+        if full_scan and not is_test_env:
+            if progress_cb:
+                progress_cb("Esecuzione traceroute multi-target paralleli (Cloudflare, Google, AWS, IXP)...", 15)
+            multi_target_analysis = self.probe_parallel_targets(timeout_s=12.0)
+
+        # 3. Access Profile Primary Traceroute
         if progress_cb:
-            progress_cb("Esecuzione traceroute multi-probe per profilo di accesso...", 15)
+            progress_cb("Esecuzione traceroute multi-probe per profilo di accesso...", 20)
 
-        # 2. Multi-probe Traceroute
-        is_test_env = bool(os.environ.get("NETPROBE_SPEED_HOST") or os.environ.get("NETPROBE_QUICK_TRACEROUTE"))
         max_hops = 3 if is_test_env else 12
         probes = 1 if is_test_env else 8
-
         target = "1.1.1.1"
-        access_profile = self.measure_access_profile(target, max_hops=max_hops, probes=probes)
-        hops = access_profile.get("hops") or []
-        if not is_test_env and (not hops or len([h for h in hops if h.get("flags", {}).get("responds_to_ping")]) < 2):
-            target = "8.8.8.8"
-            access_profile = self.measure_access_profile(target, max_hops=12, probes=8)
-            hops = access_profile.get("hops") or []
 
-        # Risoluzione dinamica ASN e rDNS per tutti gli hop pubblici responsivi
+        if multi_target_analysis.get("raw_paths", {}).get("cloudflare"):
+            hops = multi_target_analysis["raw_paths"]["cloudflare"]
+            access_profile = build_access_profile_from_hops(hops, target=target)
+        else:
+            access_profile = self.measure_access_profile(target, max_hops=max_hops, probes=probes)
+            hops = access_profile.get("hops") or []
+            if not is_test_env and (not hops or len([h for h in hops if h.get("flags", {}).get("responds_to_ping")]) < 2):
+                target = "8.8.8.8"
+                access_profile = self.measure_access_profile(target, max_hops=12, probes=8)
+                hops = access_profile.get("hops") or []
+
+        # Risoluzione dinamica ASN, rDNS e parsing profondo grammatica hostnames
         for h in hops:
             h_ip = h.get("ip")
             if not h_ip or h_ip == "*":
@@ -804,15 +1622,20 @@ class IXPAnalyzer:
                     h["asn_name"] = asn_name
                 if h.get("rdns") is None:
                     h["rdns"] = lookup_ip_rdns(h_ip, timeout_s=0.8)
+            if h.get("rdns"):
+                rdns_parsed = parse_rdns_metro_and_role(h.get("rdns"))
+                h["rdns_parsed"] = rdns_parsed
+                if rdns_parsed.get("carrier") and not h.get("asn_name"):
+                    h["asn_name"] = rdns_parsed["carrier"]
 
-        # 3. Individuazione e Burst Ping di Hop 2 (BNG / First Hop Provider)
+        # 4. Individuazione e Burst Ping di Hop 2 (BNG / First Hop Provider)
         hop2_ip, hop2_metrics = self._probe_hop2_bng(hops, progress_cb=progress_cb)
         path_mtu = self.probe_path_mtu()
 
-        # 4. Match Subnet Peering LAN IXP
+        # 5. Match Subnet Peering LAN IXP
         matched_ixp, match_evidence = self._find_ixp_in_hops(hops)
 
-        # 5. PeeringDB lookup per ASN utente
+        # 6. PeeringDB lookup per ASN utente
         user_asn = wan_data.get("asn") or ""
         asn_clean = re.sub(r"[^\d]", "", str(user_asn))
         peeringdb_info = {}
@@ -827,7 +1650,7 @@ class IXPAnalyzer:
                     "facilities": EMBEDDED_ASN_PEERING_HUBS[asn_int]
                 }
 
-        # 6. Classificazione IXP / PNI
+        # 7. Classificazione IXP / PNI
         classification = self._classify_exchange(
             matched_ixp=matched_ixp,
             match_evidence=match_evidence,
@@ -844,6 +1667,35 @@ class IXPAnalyzer:
         wan_asn_val = int(asn_clean) if asn_clean else None
         dest_asn_val = 13335 if (target == "1.1.1.1" or any(h.get("asn") == 13335 for h in hops)) else (15169 if target == "8.8.8.8" else None)
 
+        # 8. Mappatura Facility Datacenter Campus
+        facility = resolve_datacenter_facility(
+            ip=egress_ip,
+            rdns=match_evidence.get("rdns") if match_evidence else None,
+            ixp_id=matched_ixp.get("id") if matched_ixp else None,
+            metro_code=classification.get("metro_code") or anycast_colo,
+            anycast_colo=anycast_colo,
+            city=classification.get("city"),
+            hops=hops
+        )
+        if facility:
+            if not classification.get("facility"):
+                classification["facility"] = facility["facility_name"]
+            if not classification.get("coordinates") and facility.get("coordinates"):
+                classification["coordinates"] = facility["coordinates"]
+
+        # 9. Costruzione del flusso topologico e metro egress
+        topo_flow = build_topological_flow(hops, facility=facility, colo=anycast_colo, target=target)
+        metro_city = classification.get("city") or (facility.get("city") if facility else "Milano")
+        metro_code = (facility.get("metro_code") if facility else (anycast_colo or "MXP"))
+        metro_egress = {
+            "metro_city": metro_city,
+            "metro_code": metro_code,
+            "exit_router_ip": egress_ip or (hops[-1].get("ip") if hops else None),
+            "transit_carrier": classification.get("peering_type") or "Direct PNI / Transit",
+            "facility_name": facility.get("facility_name") if facility else None,
+            "verified_via": classification.get("detection_method") or "Anycast PoP / AS-Boundary"
+        }
+
         access_profile = build_access_profile_from_hops(
             hops,
             target=target,
@@ -855,6 +1707,15 @@ class IXPAnalyzer:
         )
         access_profile["target"] = target
 
+        transit_carriers = multi_target_analysis.get("transit_carriers", [])
+        if not transit_carriers:
+            for h in hops:
+                hasn = h.get("asn")
+                if hasn in (6762, 1299, 3356, 3257, 174):
+                    carrier_tag = h.get("asn_name") or f"AS{hasn}"
+                    if carrier_tag not in transit_carriers:
+                        transit_carriers.append(carrier_tag)
+
         return {
             "detected_ixp": classification.get("ixp_name"),
             "ixp_city": classification.get("city"),
@@ -865,7 +1726,7 @@ class IXPAnalyzer:
             "matched_hop_ip": classification.get("matched_hop_ip"),
             "matched_subnet": classification.get("matched_subnet"),
             "rtt_to_ixp_ms": classification.get("rtt_to_ixp_ms"),
-            "coordinates": classification.get("coordinates"),
+            "coordinates": classification.get("coordinates") or (facility.get("coordinates") if facility else None),
             "anycast_colo": anycast_colo,
             "traceroute_hops": hops,
             "access_profile": access_profile,
@@ -875,7 +1736,13 @@ class IXPAnalyzer:
             "peeringdb_facilities": peeringdb_info.get("facilities", []),
             "analysis_notes": classification.get("notes", []),
             "hypothesis": classification.get("hypothesis"),
-            "is_identified": is_identified
+            "is_identified": is_identified,
+            "datacenter_facility": facility,
+            "metro_egress": metro_egress,
+            "multi_cdn_inspection": multi_cdn,
+            "multi_target_analysis": multi_target_analysis,
+            "topological_flow": topo_flow,
+            "transit_carriers": transit_carriers
         }
 
     @staticmethod
@@ -1764,6 +2631,49 @@ class IXPAnalyzer:
         wan_asn_val = int(asn_clean) if asn_clean else None
         dest_asn_val = 13335 if (target == "1.1.1.1" or any(h.get("asn") == 13335 for h in hops)) else (15169 if target == "8.8.8.8" else None)
 
+        for h in hops:
+            if h.get("rdns"):
+                rdns_parsed = parse_rdns_metro_and_role(h.get("rdns"))
+                h["rdns_parsed"] = rdns_parsed
+                if rdns_parsed.get("carrier") and not h.get("asn_name"):
+                    h["asn_name"] = rdns_parsed["carrier"]
+
+        facility = resolve_datacenter_facility(
+            ip=egress_ip,
+            rdns=match_evidence.get("rdns") if match_evidence else None,
+            ixp_id=matched_ixp.get("id") if matched_ixp else None,
+            metro_code=classification.get("metro_code") or anycast_colo,
+            anycast_colo=anycast_colo,
+            city=classification.get("city"),
+            hops=hops
+        )
+        if facility:
+            if not classification.get("facility"):
+                classification["facility"] = facility["facility_name"]
+            if not classification.get("coordinates") and facility.get("coordinates"):
+                classification["coordinates"] = facility["coordinates"]
+
+        topo_flow = build_topological_flow(hops, facility=facility, colo=anycast_colo, target=target)
+        metro_city = classification.get("city") or (facility.get("city") if facility else "Milano")
+        metro_code = (facility.get("metro_code") if facility else (anycast_colo or "MXP"))
+        metro_egress = {
+            "metro_city": metro_city,
+            "metro_code": metro_code,
+            "exit_router_ip": egress_ip or (hops[-1].get("ip") if hops else None),
+            "transit_carrier": classification.get("peering_type") or "Direct PNI / Transit",
+            "facility_name": facility.get("facility_name") if facility else None,
+            "verified_via": classification.get("detection_method") or "Offline Topology Replay"
+        }
+        multi_cdn = {"verified_metro": metro_city, "verified_metro_code": metro_code, "cloudflare": {"colo": anycast_colo}} if anycast_colo else {}
+
+        transit_carriers = []
+        for h in hops:
+            hasn = h.get("asn")
+            if hasn in (6762, 1299, 3356, 3257, 174):
+                carrier_tag = h.get("asn_name") or f"AS{hasn}"
+                if carrier_tag not in transit_carriers:
+                    transit_carriers.append(carrier_tag)
+
         access_profile = build_access_profile_from_hops(
             hops,
             target=target,
@@ -1784,7 +2694,7 @@ class IXPAnalyzer:
             "matched_hop_ip": classification.get("matched_hop_ip"),
             "matched_subnet": classification.get("matched_subnet"),
             "rtt_to_ixp_ms": classification.get("rtt_to_ixp_ms"),
-            "coordinates": classification.get("coordinates"),
+            "coordinates": classification.get("coordinates") or (facility.get("coordinates") if facility else None),
             "anycast_colo": anycast_colo,
             "traceroute_hops": hops,
             "access_profile": access_profile,
@@ -1792,6 +2702,12 @@ class IXPAnalyzer:
             "peeringdb_facilities": peeringdb_info.get("facilities", []),
             "analysis_notes": classification.get("notes", []),
             "hypothesis": classification.get("hypothesis"),
-            "is_identified": is_identified
+            "is_identified": is_identified,
+            "datacenter_facility": facility,
+            "metro_egress": metro_egress,
+            "multi_cdn_inspection": multi_cdn,
+            "multi_target_analysis": {},
+            "topological_flow": topo_flow,
+            "transit_carriers": transit_carriers
         }
 

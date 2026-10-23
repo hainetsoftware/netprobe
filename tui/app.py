@@ -394,7 +394,7 @@ class NetProbeTUIApp(App):
             # 3. IXP & Traceroute
             progress_cb("Analisi Peering IXP/PNI e burst BNG Hop 2...", 50)
             ixp_analyzer = IXPAnalyzer()
-            ixp_data = ixp_analyzer.analyze_ixp_and_bng(wan_data, progress_cb=progress_cb)
+            ixp_data = ixp_analyzer.analyze_ixp_and_bng(wan_data, progress_cb=progress_cb, full_scan=(not quick))
 
             # 4. Performance Tester
             progress_cb("Misurazione latenza multi-target e bufferbloat...", 70)

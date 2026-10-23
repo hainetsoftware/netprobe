@@ -191,6 +191,12 @@ VerticalScroll, .pane-scroll {
     margin-bottom: 1;
 }
 
+.breadcrumb-flow {
+    color: $primary;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
 .hero-metric-row {
     height: auto;
     margin-bottom: 1;

@@ -644,6 +644,49 @@ def format_routing_ixp(data: Dict[str, Any]) -> List[Tuple[str, str]]:
 
         lines.append(("", "normal"))
 
+    # Mappa Infrastrutturale del Traffico (Backhaul & Metro Flow)
+    topo_flow = ixp.get("topological_flow") or {}
+    if topo_flow:
+        lines.append((" MAPPA INFRASTRUTTURALE DEL TRAFFICO (BACKHAUL & METRO FLOW):", "bold_yellow"))
+        breadcrumb = topo_flow.get("breadcrumb") or "[Client Locale] ──> [Accesso BRAS/DSLAM] ──> [Core Regionale] ──> [Carrier Transit Tier-1] ──> [Hub / Datacenter Campus] ──> [Edge Anycast]"
+        lines.append((f" {breadcrumb}", "bold_cyan"))
+        for stg in topo_flow.get("stages", []):
+            lines.append((f"  • {stg.get('label'):<30}: {stg.get('node')}", "normal"))
+        lines.append(("", "normal"))
+
+    # Facility & Datacenter Campus Identificato
+    fac = ixp.get("datacenter_facility") or opt.get("datacenter_facility")
+    if fac:
+        lines.append((" FACILITY & DATACENTER CAMPUS IDENTIFICATO:", "bold_yellow"))
+        lines.append((f" • Nome Struttura / Facility   : {fac.get('facility_name')}", "bold_white"))
+        lines.append((f" • Campus Tecnologico          : {fac.get('campus')}", "normal"))
+        lines.append((f" • Indirizzo Fisico            : {fac.get('address')}", "normal"))
+        lines.append((f" • Operatore / Gestore         : {fac.get('operator')}", "normal"))
+        lines.append((f" • Area Metropolitana (Metro)  : {fac.get('city')} [{fac.get('metro_code')}]", "normal"))
+        asns_str = ", ".join(f"AS{a}" for a in fac.get("host_asns", [])[:6])
+        lines.append((f" • ASN Principali Ospitati     : {asns_str}", "dim"))
+        lines.append((f" • Interconnessione            : {fac.get('interconnect_type')}", "normal"))
+        lines.append(("", "normal"))
+
+    # Analisi Divergenza Multi-Target
+    mt_analysis = ixp.get("multi_target_analysis") or {}
+    targets_data = mt_analysis.get("targets") or {}
+    if targets_data:
+        lines.append((" ANALISI DIVERGENZA MULTI-TARGET (EXIT POPS & CARRIERS):", "bold_yellow"))
+        if mt_analysis.get("divergence_description"):
+            lines.append((f" • {mt_analysis.get('divergence_description')}", "dim"))
+        t_header = f" {'Target':<24} {'IP Address':<16} {'RTT Min':<10} {'Exit PoP':<10} {'Carrier Handoff / ASN':<28}"
+        lines.append((t_header, "bold_cyan"))
+        lines.append(("─" * len(t_header), "dim"))
+        for t_k, t_val in targets_data.items():
+            t_lbl = t_val.get("label") or t_k.replace("_", " ").title()
+            t_ip = str(t_val.get("target_ip") or "-")
+            t_rtt = f"{t_val.get('min_rtt_ms'):.1f} ms" if t_val.get("min_rtt_ms") is not None else "*"
+            t_pop = str(t_val.get("exit_pop") or "-")
+            t_car = str(t_val.get("handoff_carrier") or "-")
+            lines.append((f" {t_lbl:<24} {t_ip:<16} {t_rtt:<10} {t_pop:<10} {t_car:<28}", "normal"))
+        lines.append(("", "normal"))
+
     # Tabella Hop Traceroute
     hops = ixp.get("traceroute_hops", [])
     if hops:
@@ -1537,6 +1580,36 @@ class IxpView(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         with Container(classes="card"):
+            yield Label("▶  MAPPA INFRASTRUTTURALE DEL TRAFFICO (BACKHAUL & METRO FLOW)", classes="card-title")
+            yield Label(" [Client Locale] ──> [Accesso BRAS/DSLAM] ──> [Core Regionale] ──> [Carrier Transit Tier-1] ──> [Hub / Datacenter Campus] ──> [Edge Anycast]", id="flow-breadcrumb", classes="breadcrumb-flow")
+            yield _make_kv("1. Client Locale", val_id="flow-client")
+            yield _make_kv("2. Accesso BRAS / DSLAM", val_id="flow-access")
+            yield _make_kv("3. Core Regionale / Aggregazione", val_id="flow-core")
+            yield _make_kv("4. Carrier Transit Tier-1 / Dorsale", val_id="flow-carrier")
+            yield _make_kv("5. Hub / Datacenter Campus Fisico", val_id="flow-datacenter")
+            yield _make_kv("6. Edge Anycast di Destinazione", val_id="flow-edge")
+
+        with Container(classes="card"):
+            yield Label("▶  FACILITY & DATACENTER CAMPUS IDENTIFICATO", classes="card-title")
+            yield _make_kv("Nome Struttura / Facility", val_id="fac-name", val_class="kv-val-cyan")
+            yield _make_kv("Campus Tecnologico", val_id="fac-campus")
+            yield _make_kv("Indirizzo Fisico", val_id="fac-address")
+            yield _make_kv("Area Metropolitana (Metro PoP)", val_id="fac-metro")
+            yield _make_kv("Operatore / Gestore", val_id="fac-operator")
+            yield _make_kv("ASN Principali Ospitati", val_id="fac-asns")
+            yield _make_kv("Tipologia Interconnessione", val_id="fac-interconnect")
+            yield _make_kv("Coordinate Geografiche GPS", val_id="fac-coords")
+
+        with Container(classes="card"):
+            yield Label("▶  ANALISI DIVERGENZA MULTI-TARGET (EXIT POPS & CARRIERS)", classes="card-title")
+            yield Label("Nessuna divergenza multi-target acquisita", id="div-summary", classes="dim")
+            table_div = DataTable(id="table-divergence")
+            table_div.zebra_stripes = True
+            table_div.can_focus = True
+            table_div.cursor_type = "row"
+            yield table_div
+
+        with Container(classes="card"):
             yield Label("▶  INTELLIGENCE PEERING IXP & AS-BOUNDARY", classes="card-title")
             yield _make_kv("Internet eXchange / Hub Peering", val_id="ixp-detected", val_class="kv-val-cyan")
             yield _make_kv("Struttura / Campus IXP", val_id="ixp-facility")
@@ -1568,6 +1641,8 @@ class IxpView(VerticalScroll):
     def on_mount(self):
         tbl = self.query_one("#table-peeringdb", DataTable)
         tbl.add_columns("Struttura / Hub Peering", "Città", "Paese")
+        tbl_div = self.query_one("#table-divergence", DataTable)
+        tbl_div.add_columns("Target", "Indirizzo IP", "RTT Min (ms)", "Exit PoP / Metro", "Carrier Handoff / ASN")
         self._update_display(self.data)
 
     def watch_data(self, new_data):
@@ -1578,6 +1653,55 @@ class IxpView(VerticalScroll):
         if not data:
             return
         ixp = data.get("ixp") or {}
+
+        # Mappa infrastrutturale del traffico
+        topo_flow = ixp.get("topological_flow") or {}
+        stages = topo_flow.get("stages") or []
+        bc = topo_flow.get("breadcrumb") or "[Client Locale] ──> [Accesso BRAS/DSLAM] ──> [Core Regionale] ──> [Carrier Transit Tier-1] ──> [Hub / Datacenter Campus] ──> [Edge Anycast]"
+        self.query_one("#flow-breadcrumb", Label).update(bc)
+        stg_map = {s.get("role"): s.get("node") for s in stages}
+        self.query_one("#flow-client", Label).update(str(stg_map.get("Client Locale") or "-"))
+        self.query_one("#flow-access", Label).update(str(stg_map.get("Accesso BRAS/DSLAM") or "-"))
+        self.query_one("#flow-core", Label).update(str(stg_map.get("Core Regionale") or "-"))
+        self.query_one("#flow-carrier", Label).update(str(stg_map.get("Carrier Transit Tier-1") or "-"))
+        self.query_one("#flow-datacenter", Label).update(str(stg_map.get("Hub / Datacenter Campus") or "-"))
+        self.query_one("#flow-edge", Label).update(str(stg_map.get("Edge Anycast") or "-"))
+
+        # Facility & Datacenter Campus
+        est = data.get("estimations") or {}
+        opt = est.get("optical_routing") or {}
+        fac = ixp.get("datacenter_facility") or opt.get("datacenter_facility") or {}
+        self.query_one("#fac-name", Label).update(str(fac.get("facility_name") or "-"))
+        self.query_one("#fac-campus", Label).update(str(fac.get("campus") or "-"))
+        self.query_one("#fac-address", Label).update(str(fac.get("address") or "-"))
+        self.query_one("#fac-metro", Label).update(f"{fac.get('city', '-')} [{fac.get('metro_code', '-')}]" if fac.get("city") else "-")
+        self.query_one("#fac-operator", Label).update(str(fac.get("operator") or "-"))
+        asns_str = ", ".join(f"AS{a}" for a in fac.get("host_asns", [])[:8]) if fac.get("host_asns") else "-"
+        self.query_one("#fac-asns", Label).update(asns_str)
+        self.query_one("#fac-interconnect", Label).update(str(fac.get("interconnect_type") or "-"))
+        coords = fac.get("coordinates") or {}
+        coords_str = f"Lat: {coords.get('lat')}, Lon: {coords.get('lon')}" if (coords.get('lat') and coords.get('lon')) else "-"
+        self.query_one("#fac-coords", Label).update(coords_str)
+
+        # Divergenza multi-target
+        tbl_div = self.query_one("#table-divergence", DataTable)
+        tbl_div.clear()
+        mt = ixp.get("multi_target_analysis") or {}
+        targets_dict = mt.get("targets") or {}
+        div_desc = mt.get("divergence_description") or ("Scansione Quick / Dati divergenza non acquisiti" if not targets_dict else "Divergenza Multi-Target")
+        self.query_one("#div-summary", Label).update(div_desc)
+        if targets_dict:
+            for tk, tv in targets_dict.items():
+                lbl = tv.get("label") or tk.replace("_", " ").title()
+                tip = str(tv.get("target_ip") or "-")
+                trtt = f"{tv.get('min_rtt_ms'):.1f}" if tv.get("min_rtt_ms") is not None else "*"
+                tpop = str(tv.get("exit_pop") or "-")
+                tcar = str(tv.get("handoff_carrier") or "-")
+                tbl_div.add_row(lbl, tip, trtt, tpop, tcar)
+        else:
+            tbl_div.add_row("Nessun target parallelo", "-", "-", "-", "-")
+
+        # Sezione PEERING IXP classica
         self.query_one("#ixp-detected", Label).update(str(ixp.get("detected_ixp") or "Non identificato"))
         self.query_one("#ixp-facility", Label).update(str(ixp.get("ixp_facility") or "-"))
         self.query_one("#ixp-city", Label).update(str(ixp.get("ixp_city") or "-"))
@@ -1586,8 +1710,7 @@ class IxpView(VerticalScroll):
         self.query_one("#ixp-colo", Label).update(str(ixp.get("anycast_colo") or "-"))
         self.query_one("#ixp-egress", Label).update(str(ixp.get("matched_hop_ip") or "-"))
 
-        est = data.get("estimations") or {}
-        opt = est.get("optical_routing") or {}
+        # Routing Ottico classico
         d_km = opt.get("straight_line_distance_km")
         self.query_one("#ixp-dist", Label).update(f"~{d_km:.1f} km" if d_km is not None else "-")
         f_km = opt.get("estimated_fiber_path_km")
@@ -1614,11 +1737,11 @@ class IxpView(VerticalScroll):
                 facs = EMBEDDED_ASN_PEERING_HUBS[int(clean_asn)]
 
         if facs:
-            for fac in facs:
+            for fac_item in facs:
                 tbl.add_row(
-                    str(fac.get("name") or "-"),
-                    str(fac.get("city") or "-"),
-                    str(fac.get("country") or "Italia")
+                    str(fac_item.get("name") or "-"),
+                    str(fac_item.get("city") or "-"),
+                    str(fac_item.get("country") or "Italia")
                 )
         else:
             tbl.add_row("Nessuna struttura PeeringDB", "-", "-")

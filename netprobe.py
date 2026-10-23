@@ -84,7 +84,7 @@ def run_cli_scan(quick: bool = False, full: bool = False, json_output: bool = Fa
 
     # 3. IXP & Peering Intelligence (Traceroute multi-target + PeeringDB + Hop 2 BNG burst)
     ixp_analyzer = IXPAnalyzer()
-    ixp_data = ixp_analyzer.analyze_ixp_and_bng(wan_data)
+    ixp_data = ixp_analyzer.analyze_ixp_and_bng(wan_data, full_scan=full)
 
     # 4. Performance Tester
     perf_tester = PerformanceTester()

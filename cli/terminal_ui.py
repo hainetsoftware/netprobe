@@ -522,6 +522,27 @@ class TerminalUI:
             fac_names = [f["name"] for f in pdb_facs[:4] if f.get("name")]
             if fac_names:
                 self.print_kv("Poli di Peering Pubblico AS Operatore", ", ".join(fac_names))
+
+        # Facility Datacenter & Mappa Infrastrutturale
+        fac = ixp.get("datacenter_facility") or opt.get("datacenter_facility")
+        if fac:
+            self.print_kv("Datacenter Campus Fisico", f"{fac.get('facility_name')} ({fac.get('address')})")
+            if fac.get("operator"):
+                self.print_kv("Operatore / Consorzio Campus", fac.get("operator"))
+
+        topo_flow = ixp.get("topological_flow")
+        if topo_flow and topo_flow.get("breadcrumb"):
+            print(f"  {self.BOLD}Mappa Infrastrutturale del Traffico:{self.RESET}")
+            print(f"  {self.BRIGHT_CYAN}{topo_flow.get('breadcrumb')}{self.RESET}")
+
+        mt_analysis = ixp.get("multi_target_analysis") or {}
+        targets_dict = mt_analysis.get("targets") or {}
+        if targets_dict:
+            print(f"  {self.BOLD}Divergenza Multi-Target (Exit PoPs & Carriers):{self.RESET}")
+            for tk, tv in targets_dict.items():
+                t_lbl = tv.get("label") or tk.replace("_", " ").title()
+                t_rtt = f"{tv.get('min_rtt_ms'):.1f} ms" if tv.get("min_rtt_ms") is not None else "*"
+                print(f"    • {t_lbl:<20} -> {tv.get('target_ip'):<15} {t_rtt:<10} [{tv.get('exit_pop')}] {tv.get('handoff_carrier')}")
         print()
 
         # BDP & Buffer TCP
