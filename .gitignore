@@ -40,6 +40,8 @@ MANIFEST
 
 # --- Virtual Environments ---
 .venv/
+.venv-win/
+.python-packages/
 venv/
 ENV/
 env/

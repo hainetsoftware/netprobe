@@ -230,6 +230,65 @@ class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
             btn_full = app.query_one("#btn-full", Button)
             self.assertFalse(btn_full.disabled)
 
+    async def test_scan_timer_updates_and_stops_on_completion(self):
+        """Telemetry usa monotonic, mostra elapsed/ETA e ferma il timer a fine scansione."""
+        import time
+        from tui.app import NetProbeTUIApp
+        from textual.widgets import Label
+
+        app = NetProbeTUIApp(auto_scan=False)
+        async with app.run_test(size=(100, 30)) as pilot:
+            app.scan_start_time = time.monotonic() - 12.4
+            app._on_scan_start(quick=False)
+            app._on_scan_progress("Test Banda Download", 65)
+            app._update_scan_timer()
+            status = str(app.query_one("#status-label", Label).render())
+            self.assertIn("Tempo: 00:12", status)
+            self.assertIn("ETA: ~00:28", status)
+            self.assertIn("Test Banda Download (65%)", status)
+
+            app._on_scan_success({})
+            status = str(app.query_one("#status-label", Label).render())
+            self.assertIn("COMPLETATO", status)
+            self.assertIn("in 00:12", status)
+            self.assertIsNone(app._scan_timer)
+
+    async def test_tui_responsive_viewports_mount(self):
+        """Le viste montano senza errori sia alle dimensioni minime sia widescreen."""
+        from tui.app import NetProbeTUIApp
+
+        for size in ((80, 24), (160, 50)):
+            app = NetProbeTUIApp(auto_scan=False)
+            async with app.run_test(size=size) as pilot:
+                await pilot.pause()
+                self.assertEqual(app.size.width, size[0])
+                self.assertEqual(app.size.height, size[1])
+                self.assertEqual(app.query_one("#tabs").size.width, size[0])
+
+    async def test_vertical_scroll_works_in_active_tab(self):
+        """La vista attiva ha altezza vincolata e le azioni di scroll la fanno avanzare."""
+        from tui.app import NetProbeTUIApp
+        from textual.containers import VerticalScroll
+        from textual.events import MouseScrollDown
+        from textual.widgets import Label
+
+        app = NetProbeTUIApp(initial_data=self.eth_data, auto_scan=False)
+        async with app.run_test(size=(80, 24)) as pilot:
+            view = app.query_one("#view-dashboard", VerticalScroll)
+            pane = app.query_one("#tab-dashboard")
+            await view.mount(Label("\n".join(f"riga di prova {n}" for n in range(40))))
+            await pilot.pause()
+            self.assertGreater(view.max_scroll_y, 0)
+            start_y = view.scroll_y
+            app.action_scroll_down()
+            await pilot.pause()
+            self.assertGreater(view.scroll_y, start_y)
+
+            start_y = view.scroll_y
+            view.post_message(MouseScrollDown(view, 1, 1, 0, 0, 0, False, False, False))
+            await pilot.pause()
+            self.assertGreater(view.scroll_y, start_y)
+
     async def test_tui_tab_navigation(self):
         """Verifica la navigazione rapida e con frecce tra tutte le 9 schede della TUI."""
         from tui.app import NetProbeTUIApp

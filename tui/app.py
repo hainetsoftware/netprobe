@@ -146,6 +146,11 @@ class NetProbeTUIApp(App):
         self.auto_scan = auto_scan
         self.is_scanning = False
         self.scan_data = initial_data
+        self.scan_start_time: Optional[float] = None
+        self._scan_timer = None
+        self._scan_quick = False
+        self._scan_status_message = ""
+        self._scan_progress = 0
         self._theme_index = 0
         for custom_theme in CUSTOM_THEMES:
             self.register_theme(custom_theme)
@@ -156,9 +161,9 @@ class NetProbeTUIApp(App):
         yield Header(show_clock=True)
         with Container(id="hero-bar"):
             with Horizontal(id="action-buttons"):
-                yield Button("▶ Avvia Scansione Completa", id="btn-full")
-                yield Button("⚡ Scansione Rapida", id="btn-quick")
-                yield Button("💾 Esporta Report", id="btn-export")
+                yield Button("▶ Completa", id="btn-full")
+                yield Button("⚡ Rapida", id="btn-quick")
+                yield Button("💾 Export", id="btn-export")
                 yield Button("🎨 Tema (T)", id="btn-theme")
             with Vertical(id="status-container"):
                 yield Label("Pronto. Seleziona un'azione per iniziare.", id="status-label")
@@ -237,9 +242,11 @@ class NetProbeTUIApp(App):
         try:
             pane = tc.get_pane(tc.active)
             for scroll in pane.query(VerticalScroll):
-                scroll.scroll_down(animate=False)
-                return
-            pane.scroll_down(animate=False)
+                if scroll.max_scroll_y > 0:
+                    scroll.scroll_down(animate=False)
+                    return
+            if pane.max_scroll_y > 0:
+                pane.scroll_down(animate=False)
         except Exception:
             pass
 
@@ -251,9 +258,11 @@ class NetProbeTUIApp(App):
         try:
             pane = tc.get_pane(tc.active)
             for scroll in pane.query(VerticalScroll):
-                scroll.scroll_up(animate=False)
-                return
-            pane.scroll_up(animate=False)
+                if scroll.max_scroll_y > 0:
+                    scroll.scroll_up(animate=False)
+                    return
+            if pane.max_scroll_y > 0:
+                pane.scroll_up(animate=False)
         except Exception:
             pass
 
@@ -299,13 +308,45 @@ class NetProbeTUIApp(App):
         if self.is_scanning:
             self.notify("Scansione già in corso...", severity="warning")
             return
-        self.run_scan_worker(quick=False)
+        self._begin_scan(quick=False)
 
     def action_start_quick_scan(self):
         if self.is_scanning:
             self.notify("Scansione già in corso...", severity="warning")
             return
-        self.run_scan_worker(quick=True)
+        self._begin_scan(quick=True)
+
+    def _begin_scan(self, quick: bool) -> None:
+        """Initialize UI-owned telemetry before dispatching the worker thread."""
+        self.scan_start_time = time.monotonic()
+        self._scan_quick = quick
+        self._scan_status_message = "Avvio scansione..."
+        self._scan_progress = 0
+        self.run_scan_worker(quick=quick)
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        total = max(0, int(seconds))
+        return f"{total // 60:02d}:{total % 60:02d}"
+
+    def _update_scan_timer(self) -> None:
+        """Refresh elapsed and baseline ETA while the scan worker is active."""
+        if not self.is_scanning or self.scan_start_time is None:
+            self._stop_scan_timer()
+            return
+        elapsed = max(0.0, time.monotonic() - self.scan_start_time)
+        estimated_total = 8 if self._scan_quick else 40
+        eta = max(0, estimated_total - int(elapsed))
+        phase = self._scan_status_message or "Avvio scansione..."
+        self.query_one("#status-label", Label).update(
+            f"[● SCANNING] Fase: {phase} ({self._scan_progress}%) | "
+            f"Tempo: {self._format_duration(elapsed)} / ETA: ~{self._format_duration(eta)}"
+        )
+
+    def _stop_scan_timer(self) -> None:
+        if self._scan_timer is not None:
+            self._scan_timer.stop()
+            self._scan_timer = None
 
     def action_export_report(self):
         if not self.scan_data:
@@ -394,30 +435,50 @@ class NetProbeTUIApp(App):
             self.is_scanning = False
 
     def _on_scan_start(self, quick: bool):
+        self.is_scanning = True
+        self._scan_quick = quick
+        if self.scan_start_time is None:
+            self.scan_start_time = time.monotonic()
         self.query_one("#btn-full", Button).disabled = True
         self.query_one("#btn-quick", Button).disabled = True
         scan_type = "Rapida" if quick else "Completa"
-        self.query_one("#status-label", Label).update(f"⏳ Avvio scansione di rete {scan_type}...")
+        self._scan_status_message = f"Avvio scansione di rete {scan_type}..."
+        self._scan_progress = 5
+        self.query_one("#status-label", Label).update(self._scan_status_message)
         self.query_one("#progress-bar", ProgressBar).update(progress=5)
+        self._stop_scan_timer()
+        self._scan_timer = self.set_interval(0.2, self._update_scan_timer)
 
     def _on_scan_progress(self, msg: str, pct: int):
-        self.query_one("#status-label", Label).update(msg)
+        self._scan_status_message = msg
+        self._scan_progress = pct
         self.query_one("#progress-bar", ProgressBar).update(progress=pct)
+        self._update_scan_timer()
 
     def _on_scan_success(self, report: Dict[str, Any]):
+        elapsed = time.monotonic() - self.scan_start_time if self.scan_start_time is not None else 0
+        self._stop_scan_timer()
+        self.is_scanning = False
         self.scan_data = report
         self._apply_scan_data(report)
         self.query_one("#btn-full", Button).disabled = False
         self.query_one("#btn-quick", Button).disabled = False
-        self.query_one("#status-label", Label).update("✓ Scansione completata con successo!")
+        self.query_one("#status-label", Label).update(
+            f"[✓ COMPLETATO] Scansione completata in {self._format_duration(elapsed)}"
+        )
         self.query_one("#progress-bar", ProgressBar).update(progress=100)
         self.notify("Scansione completata con successo!", title="NetProbe Pro", severity="information")
 
     def _on_scan_error(self, err_msg: str):
+        self._stop_scan_timer()
+        self.is_scanning = False
         self.query_one("#btn-full", Button).disabled = False
         self.query_one("#btn-quick", Button).disabled = False
         self.query_one("#status-label", Label).update(f"❌ Errore durante la scansione: {err_msg}")
         self.notify(f"Errore scansione: {err_msg}", title="NetProbe Pro", severity="error")
+
+    def on_unmount(self) -> None:
+        self._stop_scan_timer()
 
     def _apply_scan_data(self, report: Dict[str, Any]):
         self.query_one("#view-dashboard", DashboardView).data = report

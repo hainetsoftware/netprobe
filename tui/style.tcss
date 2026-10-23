@@ -25,13 +25,14 @@ Footer {
 }
 
 #action-buttons {
-    height: 3;
+    height: auto;
     align: left middle;
 }
 
 Button {
-    margin-right: 2;
-    min-width: 20;
+    margin-right: 1;
+    min-width: 10;
+    width: auto;
     height: 3;
     border: none;
 }
@@ -80,7 +81,9 @@ Button {
 #status-label {
     color: $text-muted;
     text-style: italic;
-    height: 1;
+    height: auto;
+    min-height: 1;
+    width: 100%;
     margin-bottom: 0;
 }
 
@@ -91,7 +94,12 @@ ProgressBar {
 
 TabbedContent {
     height: 1fr;
+    min-width: 100%;
     background: $background;
+}
+
+ContentSwitcher {
+    height: 1fr;
 }
 
 Tabs {
@@ -140,16 +148,21 @@ Tabs:focus .-active, Tabs:focus Tab.-active, Tabs:focus ContentTab.-active, Tabs
 }
 
 TabPane {
+    height: 1fr;
     padding: 1 2;
     overflow-y: auto;
-    overflow-x: auto;
+    overflow-x: hidden;
+    scrollbar-size-vertical: 1;
+    scrollbar-color: $primary $surface;
     background: $background;
 }
 
-.pane-scroll {
-    height: auto;
+VerticalScroll, .pane-scroll {
+    height: 1fr;
     overflow-y: auto;
-    overflow-x: auto;
+    overflow-x: hidden;
+    scrollbar-size-vertical: 1;
+    scrollbar-color: $primary $surface;
 }
 
 .card {
@@ -274,7 +287,8 @@ DataTable {
     height: auto;
     max-height: 22;
     background: $surface;
-    border: solid $panel;
+    border: round $panel;
+    min-width: 100%;
     margin: 1 0;
 }
 
@@ -295,9 +309,9 @@ DataTable:focus {
 
 #empty-state-card {
     background: $surface;
-    border: dashed $panel;
-    padding: 2 4;
-    margin: 2 0;
+    border: round $panel;
+    padding: 1 2;
+    margin: 1 0;
     text-align: center;
     align: center middle;
 }
