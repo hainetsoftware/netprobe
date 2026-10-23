@@ -375,7 +375,7 @@ class PerformanceTester:
 
         primary_rtt, idle_baseline_method = compute_robust_idle_baseline(idle_samples)
         if primary_rtt is None:
-            primary_rtt = best_target_data.get("median_ms") or 15.0
+            primary_rtt = best_target_data["median_ms"] if best_target_data.get("median_ms") is not None else 15.0
 
         # Calcolo ambient baseline over idle window (~3s)
         ambient_rate_bps = 0.0
@@ -1134,7 +1134,7 @@ class PerformanceTester:
             time.sleep(warmup)
             while not stop_event.is_set():
                 m = self.ping_host(ping_host, count=2)
-                if m.get("median_ms"):
+                if m.get("median_ms") is not None:
                     loaded_rtts.append(m["median_ms"])
                 time.sleep(0.2)
 
@@ -1323,13 +1323,13 @@ class PerformanceTester:
     def _parse_windows_ping(self, output: str) -> Tuple[List[float], float]:
         rtts = []
         loss = 0.0
-        for m in re.finditer(r"time[=<]([0-9\.]+)ms", output, re.IGNORECASE):
+        for m in re.finditer(r"(?:time|durata|tempo)?\s*[=<]\s*([0-9\.]+)\s*ms", output, re.IGNORECASE):
             try:
                 rtts.append(float(m.group(1)))
             except ValueError:
                 pass
 
-        m_loss = re.search(r"\((\d+)%\s*loss\)", output, re.IGNORECASE)
+        m_loss = re.search(r"\((\d+)%\s*(?:loss|persi)\)", output, re.IGNORECASE)
         if m_loss:
             try:
                 loss = float(m_loss.group(1))

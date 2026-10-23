@@ -887,7 +887,7 @@ class IXPAnalyzer:
 
         for line in raw.splitlines():
             line_str = line.strip()
-            if not line_str or line_str.startswith("traceroute") or line_str.startswith("Tracing") or line_str.startswith("over a maximum"):
+            if not line_str or line_str.startswith("traceroute") or line_str.startswith("Tracing") or line_str.startswith("over a maximum") or line_str.startswith("Trace complete") or line_str.startswith("Traccia"):
                 continue
             m = re.match(r"^\s*(\d+)\s+(.*)$", line)
             if m:
@@ -924,8 +924,8 @@ class IXPAnalyzer:
         hops = []
         consec_silent = 0
         use_m_flag = is_macos()
-        reply_re = re.compile(r"(?:bytes from|From|Reply from)\s+(?:[^\s(]+\s+\()?([0-9\.]+)", re.IGNORECASE)
-        time_re = re.compile(r"time[=<]\s*(\d+(?:\.\d+)?)\s*ms", re.IGNORECASE)
+        reply_re = re.compile(r"(?:bytes from|From|Reply from|Risposta da)\s+(?:[^\s(]+\s+\()?([0-9\.]+)", re.IGNORECASE)
+        time_re = re.compile(r"(?:time|tempo|durata)?\s*[=<]\s*(\d+(?:\.\d+)?)\s*ms", re.IGNORECASE)
 
         for ttl in range(1, max_hops + 1):
             t0 = time.perf_counter()
@@ -946,18 +946,22 @@ class IXPAnalyzer:
 
             if is_windows():
                 try:
-                    c, out, _ = run_cmd(cmd, timeout=1.0)
-                    m = reply_re.search(out)
-                    if m:
-                        cand_ip = m.group(1).rstrip(":")
-                        try:
-                            ipaddress.ip_address(cand_ip)
-                            router_ip = cand_ip
-                            tm = time_re.search(out)
-                            if tm:
-                                rtt_val = round(float(tm.group(1)), 2)
-                        except ValueError:
-                            pass
+                    c, out, _ = run_cmd(cmd, timeout=1.2)
+                    out_lower = out.lower()
+                    if "request timed out" in out_lower or "richiesta scaduta" in out_lower:
+                        router_ip = None
+                    else:
+                        m = reply_re.search(out)
+                        if m:
+                            cand_ip = m.group(1).rstrip(":")
+                            try:
+                                ipaddress.ip_address(cand_ip)
+                                router_ip = cand_ip
+                                tm = time_re.search(out)
+                                if tm:
+                                    rtt_val = round(float(tm.group(1)), 2)
+                            except ValueError:
+                                pass
                 except Exception:
                     pass
             else:
@@ -1083,7 +1087,7 @@ class IXPAnalyzer:
                 tcp_permitted = True
 
         if is_windows():
-            cmd = ["tracert", "-d", "-h", str(max_hops), "-w", "800", target]
+            cmd = ["tracert", "-d", "-w", "800", "-h", str(max_hops), target]
         elif is_macos():
             if tcp_permitted:
                 cmd = ["traceroute", "-P", "TCP", "-p", "80", "-n", "-m", str(max_hops), "-q", str(probes), "-w", "1", target]
@@ -1092,7 +1096,8 @@ class IXPAnalyzer:
         else:  # Linux
             cmd = ["traceroute", "-n", "-m", str(max_hops), "-q", str(probes), "-w", "1", target]
 
-        code, out, _ = run_cmd(cmd, timeout=3.0)
+        tracert_timeout = min(max_hops * 1.0 + 3.0, 15.0) if is_windows() else 3.0
+        code, out, _ = run_cmd(cmd, timeout=tracert_timeout)
         parsed_hops = self._parse_multiprobe_traceroute(out)
         responsive = [h for h in parsed_hops if h.get("ip") and h.get("ip") != "*"]
 
@@ -1121,7 +1126,7 @@ class IXPAnalyzer:
                 tcp_permitted = True
 
         if is_windows():
-            cmd = ["tracert", "-d", "-h", str(max_hops), "-w", "800", target]
+            cmd = ["tracert", "-d", "-w", "800", "-h", str(max_hops), target]
         elif is_macos():
             if tcp_permitted:
                 cmd = ["traceroute", "-P", "TCP", "-p", "80", "-n", "-m", str(max_hops), "-q", "1", "-w", "1", target]
@@ -1134,13 +1139,14 @@ class IXPAnalyzer:
             if code != 0:
                 cmd = ["tracepath", "-n", "-m", str(max_hops), target]
 
-        code, out, _ = run_cmd(cmd, timeout=3.0)
+        tracert_timeout = min(max_hops * 1.0 + 3.0, 15.0) if is_windows() else 3.0
+        code, out, _ = run_cmd(cmd, timeout=tracert_timeout)
         raw_output = out
 
         # Parsing output riga per riga
         for line in out.splitlines():
             line = line.strip()
-            if not line or line.startswith("traceroute") or line.startswith("Tracing") or line.startswith("over a maximum"):
+            if not line or line.startswith("traceroute") or line.startswith("Tracing") or line.startswith("over a maximum") or line.startswith("Trace complete") or line.startswith("Traccia"):
                 continue
 
             # Pattern tipico: " 2  100.110.147.129  42.471 ms" o " 2    42 ms    41 ms    43 ms  100.110.147.129"
@@ -1242,7 +1248,7 @@ class IXPAnalyzer:
     def _parse_ping_times(out: str) -> List[float]:
         times = []
         for line in out.splitlines():
-            m = re.search(r"time[=<]([\d\.]+)\s*ms", line, re.IGNORECASE)
+            m = re.search(r"(?:time|tempo|durata)?\s*[=<]\s*([\d\.]+)\s*ms", line, re.IGNORECASE)
             if m:
                 try:
                     times.append(float(m.group(1)))
@@ -1284,7 +1290,7 @@ class IXPAnalyzer:
         "timeout" = nessuna risposta; None = opzione DF non supportata dal ping di sistema.
         """
         if is_windows():
-            cmd = ["ping", "-f", "-l", str(payload), "-n", "1", "-w", str(int(timeout_s * 1000)), host]
+            cmd = ["ping", "-f", "-l", str(payload), "-n", "1", "-w", "800", host]
         elif is_macos():
             cmd = ["ping", "-D", "-s", str(payload), "-c", "1", "-t", str(int(timeout_s)), host]
         else:
@@ -1293,7 +1299,7 @@ class IXPAnalyzer:
         text = (out + "\n" + err).lower()
         if self._parse_ping_times(out):
             return "ok", None
-        if re.search(r"too long|frag|needs to be fragmented", text):
+        if re.search(r"too long|frag|needs to be fragmented|frammentare|frammentazione", text):
             m = re.search(r"mtu\s*=\s*(\d+)", text)
             return "big", (int(m.group(1)) if m else None)
         if re.search(r"illegal option|invalid option|usage:|unknown option|not permitted", text):

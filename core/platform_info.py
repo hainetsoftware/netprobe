@@ -50,13 +50,17 @@ def run_cmd(args: List[str], timeout: float = 6.0) -> Tuple[int, str, str]:
     Ritorna (returncode, stdout_text, stderr_text).
     """
     try:
+        kwargs = {}
+        if is_windows():
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         proc = subprocess.Popen(
             args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
-            errors="replace"
+            errors="replace",
+            **kwargs
         )
         stdout, stderr = proc.communicate(timeout=timeout)
         return proc.returncode, stdout.strip(), stderr.strip()
@@ -73,6 +77,9 @@ def run_cmd_shell(cmd_str: str, timeout: float = 6.0) -> Tuple[int, str, str]:
     Esegue una stringa di comando tramite shell (utile per pipeline o comandi complessi).
     """
     try:
+        kwargs = {}
+        if is_windows():
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
         proc = subprocess.Popen(
             cmd_str,
             shell=True,
@@ -80,7 +87,8 @@ def run_cmd_shell(cmd_str: str, timeout: float = 6.0) -> Tuple[int, str, str]:
             stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
-            errors="replace"
+            errors="replace",
+            **kwargs
         )
         stdout, stderr = proc.communicate(timeout=timeout)
         return proc.returncode, stdout.strip(), stderr.strip()

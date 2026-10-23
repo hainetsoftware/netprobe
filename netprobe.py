@@ -23,6 +23,26 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     except Exception:
         pass
 
+# Abilita Virtual Terminal Processing (VT100) e code page UTF-8 su Windows
+if sys.platform == "win32":
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        # Set console to UTF-8
+        kernel32.SetConsoleCP(65001)
+        kernel32.SetConsoleOutputCP(65001)
+        # Enable ENABLE_VIRTUAL_TERMINAL_PROCESSING (0x0004) for stdout/stderr
+        h_out = kernel32.GetStdHandle(-11) # STD_OUTPUT_HANDLE
+        mode = ctypes.c_ulong()
+        if kernel32.GetConsoleMode(h_out, ctypes.byref(mode)):
+            kernel32.SetConsoleMode(h_out, mode.value | 0x0004)
+        h_err = kernel32.GetStdHandle(-12) # STD_ERROR_HANDLE
+        mode_err = ctypes.c_ulong()
+        if kernel32.GetConsoleMode(h_err, ctypes.byref(mode_err)):
+            kernel32.SetConsoleMode(h_err, mode_err.value | 0x0004)
+    except Exception:
+        pass
+
 # Assicura che la directory del progetto sia nel sys.path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:

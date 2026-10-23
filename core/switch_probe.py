@@ -17,6 +17,7 @@ import time
 import select
 import urllib.request
 import urllib.error
+import concurrent.futures
 from typing import Dict, List, Any, Optional, Tuple
 
 from core.platform_info import is_macos, is_linux, is_windows, run_cmd
@@ -301,35 +302,43 @@ class SwitchProbe:
         # Aggiungi anche i primi 5 IP e gli ultimi 5 IP della subnet o il gateway stesso per test SNMP
         test_ips = list(dict.fromkeys(candidate_ips))[:6]
 
-        # 1. Prova SNMP v1/v2c per ciascun candidato
-        for ip in test_ips:
-            snmp_res = self._snmp_get_switch_info(ip)
-            if snmp_res and (snmp_res.get("sys_name") or snmp_res.get("sys_descr")):
+        # 1. Prova SNMP v1/v2c in parallelo per i candidati
+        def _check_snmp(ip: str):
+            res = self._snmp_get_switch_info(ip, timeout=0.35)
+            if res and (res.get("sys_name") or res.get("sys_descr")):
                 return {
                     "detected": True,
-                    "switch_name": snmp_res.get("sys_name"),
-                    "switch_model": snmp_res.get("sys_descr"),
+                    "switch_name": res.get("sys_name"),
+                    "switch_model": res.get("sys_descr"),
                     "port_id": None,
                     "vlan": None,
                     "management_ip": ip,
                     "protocol": "SNMP v2c (RFC 1213 MIB-II sysName/sysDescr)",
                     "switch_type": "Smart / Managed Switch (Rilevato via SNMP)"
                 }
+            return None
+
+        if test_ips:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(test_ips)) as ex:
+                for res in ex.map(_check_snmp, test_ips):
+                    if res:
+                        return res
 
         # 2. Prova mDNS per apparati Ubiquiti UniFi o Smart Switch
         mdns_res = self._probe_mdns_switch()
         if mdns_res:
             return mdns_res
 
-        # 3. HTTP Title Grab sui candidati
-        for ip in test_ips:
-            http_res = self._probe_http_switch(ip)
-            if http_res:
-                return http_res
+        # 3. HTTP Title Grab sui candidati in parallelo
+        if test_ips:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(test_ips)) as ex:
+                for http_res in ex.map(self._probe_http_switch, test_ips):
+                    if http_res:
+                        return http_res
 
         return None
 
-    def _snmp_get_switch_info(self, ip: str, community: str = "public", timeout: float = 0.8) -> Optional[Dict[str, str]]:
+    def _snmp_get_switch_info(self, ip: str, community: str = "public", timeout: float = 0.35) -> Optional[Dict[str, str]]:
         """Invia richieste SNMP v2c per sysName.0 (1.3.6.1.2.1.1.5.0) e sysDescr.0 (1.3.6.1.2.1.1.1.0)."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(timeout)
@@ -427,7 +436,7 @@ class SwitchProbe:
     def _probe_mdns_switch(self) -> Optional[Dict[str, Any]]:
         """Invia query mDNS su 224.0.0.251:5353 per individuare switch Ubiquiti UniFi o Smart."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(1.0)
+        sock.settimeout(0.3)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
         # DNS Query PTR per _unifi._tcp.local
@@ -439,7 +448,7 @@ class SwitchProbe:
         try:
             sock.sendto(query, ("224.0.0.251", 5353))
             start_t = time.time()
-            while time.time() - start_t < 1.0:
+            while time.time() - start_t < 0.3:
                 data, addr = sock.recvfrom(2048)
                 text = data.decode("utf-8", "replace")
                 if "USW" in text or "switch" in text.lower() or "unifi" in text.lower():
@@ -466,10 +475,18 @@ class SwitchProbe:
     def _probe_http_switch(self, ip: str) -> Optional[Dict[str, Any]]:
         """Esegue un fetch rapido HTTP sulla porta 80/8080 per identificare titoli di web switch."""
         for port in [80, 8080]:
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(0.15)
+                    if s.connect_ex((ip, port)) != 0:
+                        continue
+            except Exception:
+                continue
+
             url = f"http://{ip}:{port}/"
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": "NetProbe/1.0"})
-                with urllib.request.urlopen(req, timeout=0.8) as resp:
+                with urllib.request.urlopen(req, timeout=0.35) as resp:
                     server_header = resp.headers.get("Server", "")
                     content = resp.read(2048).decode("utf-8", "replace")
                     

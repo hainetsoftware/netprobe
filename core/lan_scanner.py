@@ -232,6 +232,14 @@ class LanScanner:
 
     def get_default_gateway(self) -> Dict[str, Any]:
         """Rileva l'indirizzo IP, MAC e interfaccia del default gateway."""
+        if hasattr(self, "adapter") and self.adapter:
+            try:
+                gw = self.adapter.get_default_gateway()
+                if gw and gw.get("ipv4"):
+                    return gw
+            except Exception:
+                pass
+
         result = {
             "ipv4": None,
             "interface": None,
@@ -577,6 +585,13 @@ class LanScanner:
 
     def get_wifi_details(self, iface_name: Optional[str] = None, iface_type: Optional[str] = None) -> Dict[str, Any]:
         """Raccoglie metriche radio fisiche Wi-Fi (SSID, BSSID, RSSI, Noise, SNR, MCS, Canale, Banda, Standard)."""
+        if is_windows() and hasattr(self, "adapter") and hasattr(self.adapter, "get_wifi_details"):
+            try:
+                ad_wifi = self.adapter.get_wifi_details(iface_name=iface_name, iface_type=iface_type)
+                if ad_wifi:
+                    return ad_wifi
+            except Exception:
+                pass
         wifi_dev = getattr(self.adapter, "get_wifi_device_name", lambda: None)() or "en0"
         wifi_data = {
             "supported": True if wifi_dev else False,
@@ -825,6 +840,14 @@ class LanScanner:
 
     def get_ethernet_details(self, iface_name: Optional[str] = None, iface_type: Optional[str] = None) -> Dict[str, Any]:
         """Raccoglie metriche del collegamento cablato Ethernet (velocità negoziata, duplex, stato)."""
+        if is_windows() and hasattr(self, "adapter") and hasattr(self.adapter, "get_ethernet_details"):
+            try:
+                ad_eth = self.adapter.get_ethernet_details(iface_name=iface_name, iface_type=iface_type)
+                if ad_eth:
+                    return ad_eth
+            except Exception:
+                pass
+
         eth_data = {
             "active": False,
             "interface": iface_name,
@@ -917,6 +940,14 @@ class LanScanner:
 
     def get_dhcp_info(self, iface_name: Optional[str] = None) -> Dict[str, Any]:
         """Estrae i dettagli della concessione DHCP (server DHCP, lease time, scadenza, opzioni)."""
+        if is_windows() and hasattr(self, "adapter") and hasattr(self.adapter, "get_dhcp_info"):
+            try:
+                ad_dhcp = self.adapter.get_dhcp_info(iface_name)
+                if ad_dhcp and ad_dhcp.get("server_ip"):
+                    return ad_dhcp
+            except Exception:
+                pass
+
         dhcp_data = {
             "server_ip": None,
             "lease_time_seconds": None,
@@ -968,6 +999,14 @@ class LanScanner:
 
     def get_dns_configuration(self) -> Dict[str, Any]:
         """Estrae i server DNS configurati nel sistema operativo."""
+        if is_windows() and hasattr(self, "adapter") and hasattr(self.adapter, "get_dns_configuration"):
+            try:
+                ad_dns = self.adapter.get_dns_configuration()
+                if ad_dns and ad_dns.get("resolvers"):
+                    return ad_dns
+            except Exception:
+                pass
+
         dns_data = {
             "resolvers": [],
             "search_domains": [],
@@ -1044,16 +1083,19 @@ class LanScanner:
             "fastest_resolver": None
         }
 
-        # 1. Benchmark System Resolver nativo (socket.getaddrinfo)
+        # 1. Benchmark System Resolver nativo (socket.getaddrinfo) in parallelo
         durations = []
-        for domain in test_domains:
+        def probe_domain(dom: str) -> Optional[float]:
             t0 = time.perf_counter()
             try:
-                socket.getaddrinfo(domain, 80, socket.AF_INET, socket.SOCK_STREAM)
-                dt = (time.perf_counter() - t0) * 1000.0
-                durations.append(dt)
+                socket.getaddrinfo(dom, 80, socket.AF_INET, socket.SOCK_STREAM)
+                return (time.perf_counter() - t0) * 1000.0
             except Exception:
-                pass
+                return None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(test_domains)) as executor:
+            raw_durations = list(executor.map(probe_domain, test_domains))
+        durations = [d for d in raw_durations if d is not None]
         
         if durations:
             results["system_resolver_latency_ms"] = round(sum(durations) / len(durations), 2)
@@ -1073,6 +1115,14 @@ class LanScanner:
 
     def get_arp_table(self) -> List[Dict[str, Any]]:
         """Estrae la tabella ARP di sistema (dispositivi fisici noti nella LAN)."""
+        if is_windows() and hasattr(self, "adapter") and hasattr(self.adapter, "get_arp_table"):
+            try:
+                ad_arp = self.adapter.get_arp_table()
+                if ad_arp:
+                    return ad_arp
+            except Exception:
+                pass
+
         devices = []
         seen_ips = set()
 
@@ -1160,6 +1210,33 @@ class LanScanner:
         """Invia una query NetBIOS Name Service (RFC 1002) su UDP 137 per estrarre l'hostname."""
         return self._query_netbios_node_status(ip, timeout)[0]
 
+    def _fast_reverse_dns(self, ip: str, timeout: float = 0.3) -> Optional[str]:
+        """Tenta la risoluzione PTR rapida con dnspython (sub-millisecondi), con fallback a socket.gethostbyaddr se dnspython non e' presente."""
+        if not ip:
+            return None
+        try:
+            import dns.resolver, dns.reversename
+            rev = dns.reversename.from_address(ip)
+            r = dns.resolver.Resolver()
+            r.timeout = timeout
+            r.lifetime = timeout
+            ans = r.resolve(rev, "PTR")
+            for a in ans:
+                val = str(a).rstrip(".")
+                if val:
+                    return val
+            return None
+        except ImportError:
+            pass
+        except Exception:
+            # dnspython ha risposto con NXDOMAIN / NoAnswer / timeout: nessun record PTR esiste nel server DNS
+            return None
+
+        try:
+            return socket.gethostbyaddr(ip)[0]
+        except Exception:
+            return None
+
     def _discover_mdns_services(self, timeout: float = 0.6) -> Dict[str, str]:
         """Usa zeroconf per scoprire host e nomi di servizio mDNS / Bonjour sulla LAN."""
         found: Dict[str, str] = {}
@@ -1224,17 +1301,16 @@ class LanScanner:
         with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
             active_ips = list(filter(None, executor.map(probe_host, target_ips)))
 
-        for ip in active_ips:
-            name = None
-            try:
-                name = socket.gethostbyaddr(ip)[0]
-            except Exception:
-                pass
-            discovered.append({
-                "ip": ip,
+        def _resolve_sweep_ip(ip_addr: str) -> Dict[str, Any]:
+            name = self._fast_reverse_dns(ip_addr)
+            return {
+                "ip": ip_addr,
                 "hostname": name,
                 "source": "Sweep TCP"
-            })
+            }
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(32, max(len(active_ips), 1))) as executor:
+            discovered = list(executor.map(_resolve_sweep_ip, active_ips))
 
         return discovered
 
@@ -1393,29 +1469,42 @@ class LanScanner:
             for n in ndp_entries:
                 record_candidate(n.get("ip"), "NDP (ndp -an)", mac=n.get("mac"), hostname=n.get("hostname"), mac_source="ndp")
 
-        # 8. (e) Risoluzione hostname mancanti tramite reverse DNS o NetBIOS node status (con estrazione MAC)
-        for ip, entry in list(device_map.items()):
-            if ":" not in ip:
-                nb_host, nb_mac = self._query_netbios_node_status(ip)
-                if nb_host and not entry.get("hostname"):
-                    entry["hostname"] = nb_host
-                    if "NetBIOS" not in entry["discovery_sources"]:
-                        entry["discovery_sources"].append("NetBIOS")
-                        entry["how_found"] = ", ".join(entry["discovery_sources"])
-                if nb_mac and (not entry.get("mac") or entry.get("mac") == "N/D"):
-                    entry["mac"] = nb_mac
-                    entry["mac_source"] = "netbios"
-                    entry["vendor"] = lookup_vendor(nb_mac)
-                    if "NetBIOS (node-status)" not in entry["discovery_sources"]:
-                        entry["discovery_sources"].append("NetBIOS (node-status)")
-                        entry["how_found"] = ", ".join(entry["discovery_sources"])
+        # 8. (e) Risoluzione hostname mancanti tramite reverse DNS o NetBIOS node status (con estrazione MAC) in parallelo
+        def _resolve_candidate(entry_item: Dict[str, Any]) -> Tuple[str, Optional[str], Optional[str], Optional[str]]:
+            c_ip = entry_item.get("ip", "")
+            c_nb_host, c_nb_mac = None, None
+            if ":" not in c_ip:
+                c_nb_host, c_nb_mac = self._query_netbios_node_status(c_ip)
 
-            if not entry.get("hostname"):
-                try:
-                    h = socket.gethostbyaddr(ip)[0]
-                    entry["hostname"] = h
-                except Exception:
-                    pass
+            c_rdns_host = None
+            if not entry_item.get("hostname") and not c_nb_host:
+                c_rdns_host = self._fast_reverse_dns(c_ip)
+            return c_ip, c_nb_host, c_nb_mac, c_rdns_host
+
+        entries_to_resolve = list(device_map.values())
+        if entries_to_resolve:
+            max_workers = min(32, max(len(entries_to_resolve), 1))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                resolved_results = list(executor.map(_resolve_candidate, entries_to_resolve))
+
+            for c_ip, c_nb_host, c_nb_mac, c_rdns_host in resolved_results:
+                e = device_map.get(c_ip)
+                if not e:
+                    continue
+                if c_nb_host and not e.get("hostname"):
+                    e["hostname"] = c_nb_host
+                    if "NetBIOS" not in e["discovery_sources"]:
+                        e["discovery_sources"].append("NetBIOS")
+                        e["how_found"] = ", ".join(e["discovery_sources"])
+                if c_nb_mac and (not e.get("mac") or e.get("mac") == "N/D"):
+                    e["mac"] = c_nb_mac
+                    e["mac_source"] = "netbios"
+                    e["vendor"] = lookup_vendor(c_nb_mac)
+                    if "NetBIOS (node-status)" not in e["discovery_sources"]:
+                        e["discovery_sources"].append("NetBIOS (node-status)")
+                        e["how_found"] = ", ".join(e["discovery_sources"])
+                if c_rdns_host and not e.get("hostname"):
+                    e["hostname"] = c_rdns_host
 
         # 8b. (f) Estrazione MAC via EUI-64 per indirizzi IPv6 link-local/SLAAC
         for ip, entry in list(device_map.items()):

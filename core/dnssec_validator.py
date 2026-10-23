@@ -6,6 +6,7 @@ con controllo di coerenza runtime su resolver pubblico validante.
 """
 
 from typing import List, Dict, Any, Optional
+import concurrent.futures
 
 try:
     import dns.resolver
@@ -81,17 +82,12 @@ def validate_dnssec_resolvers(
             except Exception:
                 continue
 
-    per_resolver = []
-    validating_count = 0
-    non_validating_count = 0
-    filtered_policy_count = 0
-    inconclusive_count = 0
-
-    for ip in resolvers:
+    def _test_single_resolver(ip: str) -> Dict[str, Any]:
+        eff_timeout = min(timeout, 0.4) if (ip.startswith("fe80:") and "%" not in ip) else timeout
         r = dns.resolver.Resolver()
         r.nameservers = [ip]
-        r.timeout = timeout
-        r.lifetime = timeout
+        r.timeout = eff_timeout
+        r.lifetime = eff_timeout
         r.set_flags(dns.flags.RD | dns.flags.AD)
 
         good_resolved = False
@@ -132,8 +128,6 @@ def validate_dnssec_resolvers(
         # Rilevamento policy filter / sinkhole / interception (FlashStart, Fortinet, Umbrella o mancato SERVFAIL)
         is_filtered_by_policy = False
         if broken_resolved:
-            # Una zona deliberatamente corrotta con chiavi DNSSEC invalide non deve MAI restituire A record
-            # Se restituisce IP o sinkhole, oppure se il controllo pubblico era fallito per intercettazione globale
             is_filtered_by_policy = True
         elif not control_ok and (good_resolved or broken_blocked or not broken_blocked):
             is_filtered_by_policy = True
@@ -141,33 +135,39 @@ def validate_dnssec_resolvers(
         if broken_blocked and (good_resolved or ad_flag) and control_ok:
             status = "validante"
             reason = f"Convalida crittografica attiva: bloccata con successo la zona non valida ({broken_zone})."
-            validating_count += 1
         elif is_filtered_by_policy:
             status = "NON VALIDANTE (o filtrato da policy locale)"
             reason = f"Convalida crittografica assente o filtrata da policy locale: la zona non valida ({broken_zone}) non genera SERVFAIL (intercettazione, sinkhole o policy aziendale)."
-            filtered_policy_count += 1
-            non_validating_count += 1
         elif broken_resolved:
             status = "non validante"
             reason = f"Convalida crittografica assente: risolta con successo la zona volutamente corrotta ({broken_zone})."
-            non_validating_count += 1
         elif not good_resolved and not broken_resolved and not broken_blocked:
             status = "inconclusivo"
             reason = "Nessuna risposta ricevuta dal resolver per le zone di test (timeout o filtraggio porta 53)."
-            inconclusive_count += 1
         else:
             status = "inconclusivo"
             reason = "Comportamento ambiguo durante il test delle zone crittografiche."
-            inconclusive_count += 1
 
-        per_resolver.append({
+        return {
             "ip": ip,
             "status": status,
             "ad_flag": ad_flag,
             "broken_blocked": broken_blocked,
             "good_resolved": good_resolved,
-            "reason": reason
-        })
+            "reason": reason,
+            "is_filtered_by_policy": is_filtered_by_policy
+        }
+
+    if resolvers:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(resolvers)) as executor:
+            per_resolver = list(executor.map(_test_single_resolver, resolvers))
+    else:
+        per_resolver = []
+
+    validating_count = sum(1 for r in per_resolver if r["status"] == "validante")
+    filtered_policy_count = sum(1 for r in per_resolver if r.get("is_filtered_by_policy"))
+    non_validating_count = sum(1 for r in per_resolver if r["status"] in ("non validante", "NON VALIDANTE (o filtrato da policy locale)"))
+    inconclusive_count = sum(1 for r in per_resolver if r["status"] == "inconclusivo")
 
     if validating_count == len(resolvers) and validating_count > 0:
         overall = "VALIDANTE"

@@ -140,5 +140,95 @@ class TestOSAdapters(unittest.TestCase):
             self.assertNotIn("192.168.1.255", ips)
 
 
+    def test_windows_wifi_parsing_connected(self):
+        adapter = WindowsAdapter()
+        mock_wlan = """There is 1 interface on the system:
+
+    Name                   : Wi-Fi
+    Description            : Intel(R) Wi-Fi 6 AX201 160MHz
+    State                  : connected
+    SSID                   : Telecom-Fiber-5G
+    BSSID                  : 78:90:a2:0b:7a:d4
+    Radio type             : 802.11ax
+    Authentication         : WPA2-Personal
+    Cipher                 : CCMP
+    Band                   : 5 GHz
+    Channel                : 36
+    Receive rate (Mbps)    : 1201
+    Transmit rate (Mbps)   : 1201
+    Signal                 : 96%
+"""
+        with patch("core.adapters.windows.run_cmd", return_value=(0, mock_wlan, "")):
+            res = adapter.get_wifi_details()
+            self.assertTrue(res["supported"])
+            self.assertTrue(res["connected"])
+            self.assertEqual(res["ssid"], "Telecom-Fiber-5G")
+            self.assertEqual(res["bssid"], "78:90:a2:0b:7a:d4")
+            self.assertEqual(res["wifi_generation"], "Wi-Fi 6 (802.11ax)")
+            self.assertEqual(res["channel"], 36)
+            self.assertEqual(res["frequency_ghz"], 5.18)
+            self.assertEqual(res["signal_quality_pct"], 96)
+            self.assertEqual(res["rssi_dbm"], -52)
+            self.assertEqual(res["noise_dbm"], -90.0)
+            self.assertEqual(res["snr_db"], 38.0)
+            self.assertEqual(res["tx_rate_mbps"], 1201.0)
+            self.assertEqual(res["rx_rate_mbps"], 1201.0)
+            self.assertEqual(res["security"], "WPA2-Personal / CCMP")
+
+    def test_windows_wifi_disconnected(self):
+        adapter = WindowsAdapter()
+        mock_wlan = """There is 1 interface on the system:
+
+    Name                   : Wi-Fi
+    Description            : Intel(R) Wi-Fi 6 AX201 160MHz
+    State                  : disconnected
+"""
+        with patch("core.adapters.windows.run_cmd", return_value=(0, mock_wlan, "")):
+            res = adapter.get_wifi_details()
+            self.assertTrue(res["supported"])
+            self.assertFalse(res["connected"])
+            self.assertIsNone(res["ssid"])
+
+    def test_windows_wifi_when_active_ethernet(self):
+        adapter = WindowsAdapter()
+        res = adapter.get_wifi_details(iface_type="Ethernet")
+        self.assertFalse(res["connected"])
+
+    def test_windows_dhcp_parsing(self):
+        adapter = WindowsAdapter()
+        mock_ipconfig = """Ethernet adapter Ethernet 2:
+
+   Connection-specific DNS Suffix  . : homenet.telecomitalia.it
+   Description . . . . . . . . . . . : Intel(R) Ethernet Controller (3) I225-V
+   Physical Address. . . . . . . . . : 50-EB-F6-95-3B-C1
+   DHCP Enabled. . . . . . . . . . . : Yes
+   IPv4 Address. . . . . . . . . . . : 192.168.1.83(Preferred)
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+   Default Gateway . . . . . . . . . : 192.168.1.1
+   DHCP Server . . . . . . . . . . . : 192.168.1.1
+   DNS Servers . . . . . . . . . . . : 192.168.1.11
+                                       192.168.1.1
+"""
+        with patch("core.adapters.windows.run_cmd", return_value=(0, mock_ipconfig, "")):
+            dhcp = adapter.get_dhcp_info("Ethernet 2")
+            self.assertEqual(dhcp["server_ip"], "192.168.1.1")
+            self.assertEqual(dhcp["subnet_mask"], "255.255.255.0")
+            self.assertEqual(dhcp["domain_name"], "homenet.telecomitalia.it")
+            self.assertIn("192.168.1.11", dhcp["dns_servers"])
+
+    def test_windows_dns_configuration(self):
+        adapter = WindowsAdapter()
+        mock_ipconfig = """Windows IP Configuration
+
+   DNS Servers . . . . . . . . . . . : 192.168.1.11
+                                       192.168.1.1
+"""
+        with patch("core.adapters.windows.run_cmd", return_value=(0, mock_ipconfig, "")):
+            dns = adapter.get_dns_configuration()
+            self.assertIn("192.168.1.11", dns["resolvers"])
+            self.assertIn("192.168.1.1", dns["resolvers"])
+            self.assertEqual(dns["system_dns_service"], "Windows DNS Client")
+
+
 if __name__ == "__main__":
     unittest.main()
