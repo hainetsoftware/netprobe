@@ -173,3 +173,33 @@ python3 tools/replay.py tests/fixtures/real_ethernet_run1.json
 ## 📄 License
 
 Licensed under the [MIT License](LICENSE).
+
+### Path-specific egress diagnostics
+
+The existing IXP JSON keys are retained. `metro_egress` also reports
+`routing_topology` (`SINGLE_EXIT` / `MULTI_EXIT_SPLIT`), `interconnect_type`,
+`ixp_match_method`, and `exit_paths`. Each exit keeps its own target, border
+IP/rDNS, ASN, city, metro code, raw RTT and effective RTT. A CDN metro can select
+a matching observed secondary border; it cannot relocate a router with a city
+in its rDNS. GARR's authoritative PoP subdomain takes priority over both endpoints
+in a link hostname; school aggregators also expose `access_province` and `pop_token`.
+
+Public IXP traversal requires a peering LAN prefix match or an explicit IXP domain
+signature. PeeringDB city intersections describe co-located presence, not confirmed
+switch traversal. Unresolved locations and buildings remain null. PeeringDB cache
+schema v2 retains `facilities` and adds `netixlan` prefixes and `netfac` city records;
+API relationships follow the [PeeringDB API documentation](https://www.peeringdb.com/apidocs/).
+
+`optical_routing.copp_clamped` flags RTT inversions sanitized with dedicated pings
+and downstream bounds from the selected path. `raw_hub_rtt_ms` preserves the original
+measurement, and `latency_target` identifies the path used. A primary Cloudflare
+ping cannot bound a secondary Google/AWS exit. RTT inversions suggest ICMP response
+delays; asymmetric return paths can also contribute. Verified BNG ping RTT takes
+priority over private intermediate hops for access latency separation.
+
+For offline replay, `IXPAnalyzer.reclassify_offline` accepts optional
+`multi_target_analysis`, `multi_cdn_inspection`, and `peeringdb_info` dictionaries
+in addition to its original parameters. Pass the recorded `hop2_bng` dictionary
+as `hop2_metrics` to preserve the dedicated probe's IP association.
+
+Exported diagnostic reports (`netprobe_report_*.json`) stay local and are ignored by Git.

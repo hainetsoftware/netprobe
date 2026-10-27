@@ -369,11 +369,8 @@ class TestTransportDeepProbe(unittest.TestCase):
         )
 
         self.assertIn("datacenter_facility", school_res)
-        fac_school = school_res["datacenter_facility"]
-        self.assertIsNotNone(fac_school)
-        self.assertEqual(fac_school["facility_name"], "Campus Caldera (Milano)")
-        self.assertIn("Via Caldera 21", fac_school["address"])
-        self.assertEqual(fac_school["metro_code"], "MXP")
+        # An HTTP city observation does not identify a specific building.
+        self.assertIsNone(school_res["datacenter_facility"])
 
         self.assertIn("metro_egress", school_res)
         metro_school = school_res["metro_egress"]
@@ -392,16 +389,12 @@ class TestTransportDeepProbe(unittest.TestCase):
         )
 
         self.assertIn("datacenter_facility", fttc_res)
-        fac_fttc = fttc_res["datacenter_facility"]
-        self.assertIsNotNone(fac_fttc)
-        self.assertEqual(fac_fttc["facility_name"], "Campus Caldera (Milano)")
-        self.assertIn("Via Caldera 21", fac_fttc["address"])
-        self.assertEqual(fac_fttc["city"], "Milano")
-
-        self.assertIn("metro_egress", fttc_res)
+        # No border/PoP evidence: retain keys but do not invent a Milan campus.
+        self.assertIsNone(fttc_res["datacenter_facility"])
         metro_fttc = fttc_res["metro_egress"]
-        self.assertEqual(metro_fttc["metro_city"], "Milano")
-        self.assertEqual(metro_fttc["metro_code"], "MXP")
+        self.assertIsNone(metro_fttc["metro_city"])
+        self.assertIsNone(metro_fttc["metro_code"])
+        self.assertEqual(metro_fttc["interconnect_type"], "BACKBONE_TRANSIT")
 
         # Verify topological flow breadcrumb is populated in both
         self.assertIn("topological_flow", school_res)

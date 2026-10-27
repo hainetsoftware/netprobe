@@ -409,18 +409,18 @@ class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
         from tui.app import NetProbeTUIApp
         import glob
 
-        app = NetProbeTUIApp(initial_data=self.eth_data, auto_scan=False)
-        async with app.run_test() as pilot:
-            app.action_export_report()
-            await pilot.pause()
+        import tempfile
+        from unittest.mock import patch
 
-            exported_files = glob.glob("netprobe_report_*.json")
-            self.assertGreater(len(exported_files), 0)
-            for f in exported_files:
-                try:
-                    os.remove(f)
-                except OSError:
-                    pass
+        # Keep exports and cleanup away from the user's local report directory.
+        with tempfile.TemporaryDirectory() as export_dir, \
+             patch("tui.app.open", side_effect=lambda filename, *a, **kw: open(os.path.join(export_dir, filename), *a, **kw), create=True):
+            app = NetProbeTUIApp(initial_data=self.eth_data, auto_scan=False)
+            async with app.run_test() as pilot:
+                app.action_export_report()
+                await pilot.pause()
+                exported_files = glob.glob(os.path.join(export_dir, "netprobe_report_*.json"))
+                self.assertEqual(len(exported_files), 1)
 
     async def test_tui_active_tab_label_not_occluded(self):
         """Verifica che l'indicatore della scheda attiva non copra né tronchi il titolo."""

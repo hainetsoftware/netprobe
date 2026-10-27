@@ -61,7 +61,7 @@ class TestIXPAnalyzer(unittest.TestCase):
             hop2_metrics={"min_ms": 14.0}
         )
         self.assertIn("PNI", classification["peering_type"])
-        self.assertEqual(classification["city"], "Milano")
+        self.assertIsNone(classification["city"])  # Subscriber city is not exit evidence.
 
 
 if __name__ == "__main__":

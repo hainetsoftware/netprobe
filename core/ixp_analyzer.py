@@ -29,6 +29,8 @@ import urllib.error
 import concurrent.futures
 from typing import Dict, List, Any, Optional, Tuple
 
+from core.path_latency import bound_path_rtts, min_rtt
+
 from core.platform_info import is_macos, is_linux, is_windows, run_cmd
 
 
@@ -173,6 +175,18 @@ CITY_TOKEN_MAP = {
     "par": "CDG", "paris": "CDG", "parigi": "CDG", "cdg": "CDG"
 }
 
+# These coordinates identify a metro, not a colocation building.
+for _code, _city, _lat, _lon in [
+    ("PSA", "Pisa", 43.7228, 10.4017), ("BRI", "Bari", 41.1171, 16.8719),
+    ("CTA", "Catania", 37.5079, 15.0830), ("CAG", "Cagliari", 39.2238, 9.1217),
+    ("GOA", "Genova", 44.4056, 8.9463), ("TRS", "Trieste", 45.6495, 13.7768),
+]:
+    ANYCAST_COLO_HUBS[_code] = {"city": _city, "coordinates": {"lat": _lat, "lon": _lon}}
+CITY_TOKEN_MAP.update({"pi": "PSA", "pisa": "PSA", "ba": "BRI", "bari": "BRI",
+                       "ca": "CAG", "cagliari": "CAG", "ge": "GOA", "genova": "GOA",
+                       "ts": "TRS", "trieste": "TRS", "ve": "VCE"})
+
+
 DATACENTER_FACILITIES: List[Dict[str, Any]] = [
     {
         "id": "campus-caldera",
@@ -250,7 +264,7 @@ DATACENTER_FACILITIES: List[Dict[str, Any]] = [
         "coordinates": {"lat": 41.8988, "lon": 12.5186},
         "interconnect_type": "Public IXP Peering / Direct PNI",
         "subnets": [
-            "193.201.28.0/24", "185.1.40.0/23",
+            "193.201.28.0/23", "185.1.193.0/24", "185.1.40.0/23",
             "195.22.193.0/24", "195.22.219.0/24", "2001:7f8:1b::/64"
         ],
         "rdns_tokens": ["namex", "roma-namex", "luxardo", "tiburtina", "tizii", "rom", "roma", "fco", "cia"],
@@ -282,7 +296,7 @@ DATACENTER_FACILITIES: List[Dict[str, Any]] = [
         "metro_code": "TRN",
         "coordinates": {"lat": 45.0864, "lon": 7.6534},
         "interconnect_type": "Public IXP Peering / Consortium",
-        "subnets": ["194.116.86.0/24", "194.116.96.0/24", "2001:7f8:53::/64"],
+        "subnets": ["194.116.86.0/24", "194.116.96.0/22", "2001:7f8:53::/64"],
         "rdns_tokens": ["top-ix", "topix", "torino", "trn", "turin"],
         "host_asns": [3269, 1267, 12874, 30722, 13335]
     },
@@ -297,7 +311,7 @@ DATACENTER_FACILITIES: List[Dict[str, Any]] = [
         "metro_code": "PDV",
         "coordinates": {"lat": 45.4064, "lon": 11.8768},
         "interconnect_type": "Public IXP Peering",
-        "subnets": ["194.242.224.0/24", "2001:7f8:56::/64"],
+        "subnets": ["194.242.224.0/24", "195.69.148.0/24", "185.1.201.0/24", "2001:7f8:56::/64"],
         "rdns_tokens": ["vsix", "padova", "pdv", "venezia", "vce"],
         "host_asns": [12874, 1267, 13335]
     },
@@ -342,7 +356,7 @@ DATACENTER_FACILITIES: List[Dict[str, Any]] = [
         "metro_code": "FRA",
         "coordinates": {"lat": 50.1006, "lon": 8.6366},
         "interconnect_type": "Public IXP Peering / European Core",
-        "subnets": ["80.81.192.0/20", "80.81.196.0/22"],
+        "subnets": ["80.81.192.0/21"],
         "rdns_tokens": ["de-cix", "decix", "kleyerstrasse", "frankfurt", "fra"],
         "host_asns": [13335, 15169, 16509, 1299, 3356, 6762]
     }
@@ -365,7 +379,7 @@ CARRIER_DOMAINS = [
     (r"wind\.it|windtre\.it|windgroup\.it", "Wind Tre", 1267),
     (r"vodafone\.it|d2-gws\.it|omnitel\.it", "Vodafone Italia", 30722),
     (r"openfiber\.it", "Open Fiber", None),
-    (r"garr\.it", "GARR", 137),
+    (r"(?:^|\.)garr\.(?:it|net)$", "GARR", 137),
     (r"telia\.net|arelion\.com", "Telia / Arelion", 1299),
     (r"level3\.net|lumen\.com|centurylink\.com", "Lumen / Level3", 3356),
     (r"cogentco\.com", "Cogent Communications", 174),
@@ -446,7 +460,29 @@ def parse_rdns_metro_and_role(hostname: Optional[str]) -> Dict[str, Any]:
             city = ANYCAST_COLO_HUBS.get(metro_code, {}).get("city") or tok.capitalize()
             break
 
+    pop_token = None
+    access_province = None
+    if h.endswith(".garr.net") or h.endswith(".garr.it"):
+        # Nearest subdomain is authoritative; link names contain both endpoints.
+        match = re.search(r"\.([a-z]{2}\d{2})\.garr\.(?:net|it)$", h)
+        candidates = [match.group(1)] if match else re.findall(r"(?:^|[.\-_])([a-z]{2}\d{2})(?=$|[.\-_])", h)[-1:]
+        if candidates and candidates[0][:2] in CITY_TOKEN_MAP:
+            pop_token = candidates[0]
+            metro_code = CITY_TOKEN_MAP[pop_token[:2]]
+            city = ANYCAST_COLO_HUBS[metro_code]["city"]
+            if pop_token.startswith("pd"):
+                city = "Padova"
+            elif pop_token.startswith("ve"):
+                city = "Venezia"
+        access = re.search(r"(?:^|\.)aggr-scuole-([a-z]{2})-", h)
+        if access:
+            access_province = access.group(1).upper()
+            role = "Access Aggregator"
+
     return {
+        "pop_token": pop_token,
+        "access_province": access_province,
+        "location_confidence": 0.98 if pop_token else (0.9 if city else None),
         "hostname": hostname,
         "carrier": carrier,
         "asn": asn,
@@ -1325,8 +1361,8 @@ class IXPAnalyzer:
             "country": "Italia",
             "country_code": "IT",
             "coordinates": {"lat": 45.4642, "lon": 9.1028},
-            "subnets": ["217.29.66.0/23", "217.29.68.0/24", "2001:7f8:15::/64"],
-            "rdns_patterns": [r"\bmix-it\.net\b", r"\bmix\.it\b", r"\bmilano-mix\b"]
+            "subnets": ["217.29.66.0/23", "217.29.68.0/24", "185.1.226.0/23", "2001:7f8:15::/64"],
+            "rdns_patterns": [r"(?:^|\.)mix\-it\.net\.?$"]
         },
         {
             "id": "namex",
@@ -1336,8 +1372,8 @@ class IXPAnalyzer:
             "country": "Italia",
             "country_code": "IT",
             "coordinates": {"lat": 41.8988, "lon": 12.5186},
-            "subnets": ["193.201.28.0/24", "185.1.40.0/23", "2001:7f8:1b::/64"],
-            "rdns_patterns": [r"\bnamex\.it\b", r"\broma-namex\b"]
+            "subnets": ["193.201.28.0/23", "185.1.193.0/24", "185.1.40.0/23", "2001:7f8:1b::/64"],
+            "rdns_patterns": [r"(?:^|\.)namex\.it\.?$"]
         },
         {
             "id": "top-ix",
@@ -1347,8 +1383,8 @@ class IXPAnalyzer:
             "country": "Italia",
             "country_code": "IT",
             "coordinates": {"lat": 45.0392, "lon": 7.6496},
-            "subnets": ["194.116.86.0/24", "194.116.96.0/24", "2001:7f8:53::/64"],
-            "rdns_patterns": [r"\btop-ix\.org\b", r"\btorino-topix\b"]
+            "subnets": ["194.116.86.0/24", "194.116.96.0/22", "2001:7f8:53::/64"],
+            "rdns_patterns": [r"(?:^|\.)top\-ix\.org\.?$"]
         },
         {
             "id": "minap",
@@ -1359,7 +1395,7 @@ class IXPAnalyzer:
             "country_code": "IT",
             "coordinates": {"lat": 45.4654, "lon": 9.1859},
             "subnets": ["185.1.114.0/24", "2001:7f8:c5::/64"],
-            "rdns_patterns": [r"\bminap\.it\b"]
+            "rdns_patterns": [r"(?:^|\.)minap\.it\.?$"]
         },
         {
             "id": "vsix",
@@ -1369,8 +1405,8 @@ class IXPAnalyzer:
             "country": "Italia",
             "country_code": "IT",
             "coordinates": {"lat": 45.4064, "lon": 11.8768},
-            "subnets": ["194.242.224.0/24", "2001:7f8:56::/64"],
-            "rdns_patterns": [r"\bvsix\.it\b"]
+            "subnets": ["194.242.224.0/24", "195.69.148.0/24", "185.1.201.0/24", "2001:7f8:56::/64"],
+            "rdns_patterns": [r"(?:^|\.)vsix\.it\.?$"]
         },
         {
             "id": "tix",
@@ -1403,8 +1439,8 @@ class IXPAnalyzer:
             "country": "Germania",
             "country_code": "DE",
             "coordinates": {"lat": 50.1109, "lon": 8.6821},
-            "subnets": ["80.81.192.0/20", "80.81.196.0/22", "2001:7f8::/64"],
-            "rdns_patterns": [r"\bde-cix\.net\b", r"\bdecix\b"]
+            "subnets": ["80.81.192.0/21", "2001:7f8::/64"],
+            "rdns_patterns": [r"(?:^|\.)de\-cix\.net\.?$", r"(?:^|\.)decix\.net\.?$"]
         },
         {
             "id": "ams-ix",
@@ -1415,7 +1451,7 @@ class IXPAnalyzer:
             "country_code": "NL",
             "coordinates": {"lat": 52.3702, "lon": 4.8952},
             "subnets": ["80.249.208.0/21", "2001:7f8:1::/64"],
-            "rdns_patterns": [r"\bams-ix\.net\b"]
+            "rdns_patterns": [r"(?:^|\.)ams\-ix\.net\.?$"]
         },
         {
             "id": "france-ix-par",
@@ -1447,8 +1483,8 @@ class IXPAnalyzer:
             "country": "Regno Unito",
             "country_code": "GB",
             "coordinates": {"lat": 51.5074, "lon": -0.1278},
-            "subnets": ["195.66.224.0/21", "195.66.226.0/23", "2001:7f8:4::/64"],
-            "rdns_patterns": [r"\blinx\.net\b"]
+            "subnets": ["195.66.224.0/22", "2001:7f8:4::/64"],
+            "rdns_patterns": [r"(?:^|\.)linx\.net\.?$"]
         },
         {
             "id": "swiss-ix",
@@ -1685,8 +1721,8 @@ class IXPAnalyzer:
 
         # 9. Costruzione del flusso topologico e metro egress
         topo_flow = build_topological_flow(hops, facility=facility, colo=anycast_colo, target=target)
-        metro_city = classification.get("city") or (facility.get("city") if facility else "Milano")
-        metro_code = (facility.get("metro_code") if facility else (anycast_colo or "MXP"))
+        metro_city = classification.get("city") or (facility.get("city") if facility else None)
+        metro_code = (classification.get("metro_code") or (facility.get("metro_code") if facility else anycast_colo))
         metro_egress = {
             "metro_city": metro_city,
             "metro_code": metro_code,
@@ -1716,7 +1752,7 @@ class IXPAnalyzer:
                     if carrier_tag not in transit_carriers:
                         transit_carriers.append(carrier_tag)
 
-        return {
+        result = {
             "detected_ixp": classification.get("ixp_name"),
             "ixp_city": classification.get("city"),
             "ixp_facility": classification.get("facility") if is_identified else None,
@@ -1744,6 +1780,8 @@ class IXPAnalyzer:
             "topological_flow": topo_flow,
             "transit_carriers": transit_carriers
         }
+        return self._reconcile_egress(result, wan_data, peeringdb_info, multi_target_analysis, multi_cdn, target)
+
 
     @staticmethod
     def _parse_multiprobe_traceroute(raw: str) -> List[Dict[str, Any]]:
@@ -2311,50 +2349,23 @@ class IXPAnalyzer:
 
         return None, metrics
 
-    def _find_ixp_in_hops(self, hops: List[Dict[str, Any]]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-        """
-        Analizza la lista di hop del traceroute per rilevare corrispondenze
-        nelle Peering LAN Subnet o nei pattern rDNS.
-        """
+    def _find_ixp_in_hops(self, hops):
         for h in hops:
-            ip_str = h.get("ip")
-            if not ip_str or ip_str == "*":
-                continue
-
             try:
-                ip_obj = ipaddress.ip_address(ip_str)
+                addr = ipaddress.ip_address(h.get("ip", "*"))
             except ValueError:
                 continue
-
-            # 1. Match deterministico subnet LAN IXP
-            for ixp_def, net_list in self._compiled_networks:
-                for net in net_list:
-                    if ip_obj in net:
-                        evidence = {
-                            "type": "peering_subnet_match",
-                            "hop": h["hop"],
-                            "ip": ip_str,
-                            "subnet": str(net),
-                            "rtt_ms": h.get("rtt_ms")
-                        }
-                        return ixp_def, evidence
-
-            # 2. Match pattern rDNS
-            rdns = h.get("rdns") or ""
-            if rdns:
-                for ixp_def, _ in self._compiled_networks:
-                    for pattern in ixp_def.get("rdns_patterns", []):
-                        if re.search(pattern, rdns, re.IGNORECASE):
-                            evidence = {
-                                "type": "rdns_match",
-                                "hop": h["hop"],
-                                "ip": ip_str,
-                                "rdns": rdns,
-                                "pattern": pattern,
-                                "rtt_ms": h.get("rtt_ms")
-                            }
-                            return ixp_def, evidence
-
+            for ixp, networks in self._compiled_networks:
+                for network in networks:
+                    if addr in network:
+                        return ixp, {"type": "peering_subnet_match", "hop": h.get("hop"),
+                            "ip": str(addr), "subnet": str(network), "rtt_ms": min_rtt(h)}
+        for h in hops:
+            for ixp, _ in self._compiled_networks:
+                for pattern in ixp.get("rdns_patterns", []):
+                    if re.search(pattern, h.get("rdns") or "", re.IGNORECASE):
+                        return ixp, {"type": "rdns_match", "hop": h.get("hop"), "ip": h.get("ip"),
+                            "rdns": h.get("rdns"), "rtt_ms": min_rtt(h)}
         return None, None
 
     def get_peeringdb_for_asn(self, asn: int) -> Dict[str, Any]:
@@ -2377,33 +2388,51 @@ class IXPAnalyzer:
         # Se presente in cache da meno di 7 giorni, usa la cache
         if asn_key in cache:
             entry = cache[asn_key]
-            if (now - entry.get("timestamp", 0)) < (7 * 86400):
+            if (now - entry.get("timestamp", 0)) < (7 * 86400) and entry.get("data", {}).get("schema_version") == 2:
                 return entry.get("data", {})
 
-        url = f"https://www.peeringdb.com/api/netixlan?asn={asn}"
-        try:
-            req = urllib.request.Request(url, headers={"User-Agent": "NetProbe/2.0 (Network Peering Intelligence)"})
-            with urllib.request.urlopen(req, timeout=3.0) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                facilities = []
-                for item in data.get("data", []):
-                    facilities.append({
-                        "name": item.get("name"),
-                        "ix_id": item.get("ix_id"),
-                        "ipaddr4": item.get("ipaddr4"),
-                        "ipaddr6": item.get("ipaddr6"),
-                        "speed": item.get("speed")
-                    })
-                
-                result = {"asn": asn, "facilities": facilities}
-                cache[asn_key] = {"timestamp": now, "data": result}
-                try:
-                    with open(self.peeringdb_cache_file, "w", encoding="utf-8") as f:
-                        json.dump(cache, f, ensure_ascii=False, indent=2)
-                except Exception:
-                    pass
+        def fetch(endpoint, query):
+            req = urllib.request.Request(f"https://www.peeringdb.com/api/{endpoint}?{query}",
+                headers={"User-Agent": "NetProbe/2.0 (Network Peering Intelligence)"})
+            with urllib.request.urlopen(req, timeout=3.0) as response:
+                return json.loads(response.read().decode("utf-8")).get("data", [])
 
-                return result
+        def optional_fetch(endpoint, query):
+            try:
+                return fetch(endpoint, query)
+            except Exception:
+                return []
+
+        try:
+            netixlan = fetch("netixlan", f"asn={asn}&depth=2")
+            netfac = optional_fetch("netfac", f"asn={asn}&depth=2")
+            ix_ids = sorted({str(item["ix_id"]) for item in netixlan if item.get("ix_id")})
+            exchanges = optional_fetch("ix", "id__in=" + ",".join(ix_ids)) if ix_ids else []
+            by_id = {item["id"]: item for item in exchanges}
+            prefixes = optional_fetch("ixpfx", "ix__in=" + ",".join(ix_ids)) if ix_ids else []
+            for item in netixlan:
+                ix = by_id.get(item.get("ix_id"), {})
+                item["city"] = item.get("city") or ix.get("city")
+                item["prefixes"] = [p["prefix"] for p in prefixes
+                                    if p.get("ix_id", p.get("ixlan_id")) == item.get("ix_id")
+                                    and p.get("status", "ok") == "ok"]
+            for item in netfac:
+                facility = item.get("fac") or {}
+                item["city"] = item.get("city") or facility.get("city")
+                item["name"] = item.get("name") or facility.get("name")
+            # Retain the original list/key for existing JSON consumers.
+            facilities = [{k: item.get(k) for k in ("name", "ix_id", "ipaddr4", "ipaddr6", "speed", "city")}
+                          for item in netixlan]
+            result = {"asn": asn, "facilities": facilities, "netixlan": netixlan,
+                      "netfac": netfac, "schema_version": 2}
+            cache[asn_key] = {"timestamp": now, "data": result}
+            try:
+                with open(self.peeringdb_cache_file, "w", encoding="utf-8") as f:
+                    json.dump(cache, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+
+            return result
         except Exception:
             return cache.get(asn_key, {}).get("data", {})
 
@@ -2454,7 +2483,7 @@ class IXPAnalyzer:
                     "facility": matched_ixp["facility"],
                     "peering_type": "Public IXP Peering",
                     "detection_method": "Firma Reverse DNS Router di Peering",
-                    "confidence": "95%",
+                    "confidence": "90%",
                     "matched_hop_ip": match_evidence["ip"],
                     "matched_subnet": None,
                     "rtt_to_ixp_ms": match_evidence.get("rtt_ms"),
@@ -2467,15 +2496,10 @@ class IXPAnalyzer:
         colo_cand = (anycast_colo or wan_data.get("colo") or (wan_data.get("cloudflare_trace") or {}).get("colo") or "").strip().upper()
         
         rdns_hub_code = None
-        for h in hops:
-            rdns = (h.get("rdns") or "").lower()
-            if not rdns:
-                continue
-            for token, h_code in CITY_TOKEN_MAP.items():
-                if re.search(r"\b" + re.escape(token) + r"\b", rdns):
-                    rdns_hub_code = h_code
-                    break
-            if rdns_hub_code:
+        for h in reversed(hops):
+            parsed = parse_rdns_metro_and_role(h.get("rdns"))
+            if parsed.get("metro_code"):
+                rdns_hub_code = parsed["metro_code"]
                 break
 
         verified_hub_code = None
@@ -2497,7 +2521,7 @@ class IXPAnalyzer:
                 ixp_name = f"Starlink Ground Station / POP ({hub_def['city']})"
                 peering_type = "Interconnessione Starlink Satellite Ground Station"
             else:
-                ixp_name = hub_def["ixp_name"]
+                ixp_name = hub_def.get("ixp_name") or f"PNI / Direct Handoff at {hub_def['city']}"
                 peering_type = "Direct PNI / Transit Handoff"
 
             # Egress router: ultimo salto pubblico responsivo prima di dest_asn
@@ -2530,13 +2554,19 @@ class IXPAnalyzer:
                 matched_egress_ip = last_egress.get("ip")
                 rtts = last_egress.get("rtts") or [last_egress.get("rtt_ms")]
                 rtt_egress = round(min(rtts), 2) if rtts and min(rtts) is not None else None
+                parsed_border = parse_rdns_metro_and_role(last_egress.get("rdns"))
+                if parsed_border.get("metro_code") in ANYCAST_COLO_HUBS:
+                    verified_hub_code = parsed_border["metro_code"]
+                    hub_def = ANYCAST_COLO_HUBS[verified_hub_code]
+                    ixp_name = f"PNI / Direct Handoff at {parsed_border['city']}"
+                    det_method = "Reverse DNS Geolocation + Analisi AS-Boundary"
                 notes.append(f"Router di handoff / egress identificato su hop {last_egress.get('hop')} ({matched_egress_ip}).")
 
             notes.append(f"Interconnessione PNI / Transito verificata su hub di {hub_def['city']} via {det_method}.")
             return {
                 "ixp_name": ixp_name,
                 "city": hub_def["city"],
-                "facility": hub_def["facility"],
+                "facility": hub_def.get("facility"),
                 "peering_type": peering_type,
                 "detection_method": det_method,
                 "confidence": "85% (Verificato da Anycast PoP + AS-Boundary)",
@@ -2550,9 +2580,7 @@ class IXPAnalyzer:
 
         # Tier 3: Nessun match deterministico on-wire e nessun Anycast/rDNS verificato
         facilities = peeringdb_info.get("facilities", [])
-        coords = wan_data.get("coordinates", {})
-        user_lat = coords.get("latitude") or 45.46
-        polo_name = "Milano" if abs(user_lat - 45.46) < abs(user_lat - 41.90) else "Roma"
+        polo_name = None  # Subscriber GeoIP does not locate a border router.
 
         notes.append("Nessun hop nel traceroute appartiene a una subnet Peering LAN o presenta reverse DNS di un IXP noto.")
         if facilities:
@@ -2582,13 +2610,185 @@ class IXPAnalyzer:
             "notes": notes
         }
 
+    @staticmethod
+    def _city_key(city):
+        city = str(city or '').strip().lower()
+        aliases = {'milan': 'milano', 'rome': 'roma', 'turin': 'torino',
+                   'florence': 'firenze', 'naples': 'napoli', 'venice': 'venezia',
+                   'padua': 'padova', 'frankfurt': 'francoforte', 'london': 'londra'}
+        return aliases.get(city, city)
+
+    def _city_presence(self, info, city):
+        """Presence is supporting evidence, never proof of switch traversal."""
+        key = self._city_key(city)
+        return [entry for kind in ('facilities', 'netixlan', 'netfac')
+                for entry in info.get(kind, [])
+                if key and self._city_key(entry.get('city')) == key]
+
+    def _dynamic_ixp(self, hops, info):
+        # netixlan participant addresses alone do NOT establish a LAN prefix.
+        for h in hops:
+            try:
+                addr = ipaddress.ip_address(h.get('ip', '*'))
+            except ValueError:
+                continue
+            for entry in info.get('netixlan', []):
+                for prefix in entry.get('prefixes', []):
+                    prefix = prefix.get('prefix') if isinstance(prefix, dict) else prefix
+                    try:
+                        network = ipaddress.ip_network(prefix)
+                    except (ValueError, TypeError):
+                        continue
+                    if addr in network:
+                        return ({'name': entry.get('name'), 'city': entry.get('city'),
+                                 'facility': None, 'coordinates': entry.get('coordinates')},
+                                {'type': 'peering_subnet_match', 'hop': h.get('hop'),
+                                 'ip': str(addr), 'subnet': str(network), 'rtt_ms': min_rtt(h)})
+        return None, None
+
+    def _resolve_exit_path(self, target, hops, wan, info, colo, hop2):
+        """Resolve a border and its metadata as one inseparable observation."""
+        hops = sorted(hops, key=lambda h: h.get('hop', 0))
+        ixp, evidence = self._find_ixp_in_hops(hops)
+        dynamic_ixp, dynamic_evidence = self._dynamic_ixp(hops, info)
+        if dynamic_ixp and (not evidence or evidence['type'] != 'peering_subnet_match'):
+            ixp, evidence = dynamic_ixp, dynamic_evidence
+        dest_asn = {'1.1.1.1': 13335, '8.8.8.8': 15169, '13.248.118.1': 16509}.get(target)
+        candidates = []
+        for h in hops:
+            if h.get('ip') == target or (dest_asn and h.get('asn') == dest_asn):
+                break
+            try:
+                addr = ipaddress.ip_address(h.get('ip', '*'))
+            except ValueError:
+                continue
+            if addr.is_global and min_rtt(h) is not None:
+                candidates.append(h)
+        border = next((h for h in hops if evidence and h.get('ip') == evidence['ip']), None)
+        border = border or (candidates[-1] if candidates else None)
+        if not border:
+            return None
+        parsed = parse_rdns_metro_and_role(border.get('rdns'))
+        # HTTP observations may suggest a city only when the hop has no city token.
+        path_colo = parsed.get('metro_code') or colo
+        classification = self._classify_exchange(ixp, evidence, hops, info, wan, {}, path_colo, target)
+        city = parsed.get('city') or (classification.get('city')
+                if classification.get('is_identified') and (ixp or colo) else None)
+        code = parsed.get('metro_code') or next((k for k, v in ANYCAST_COLO_HUBS.items()
+                   if self._city_key(v.get('city')) == self._city_key(city)), None)
+        presence = self._city_presence(info, city)
+        public = bool(ixp and evidence)
+        method = ('CIDR_EXACT' if evidence['type'] == 'peering_subnet_match' else 'RDNS_SIGNATURE') if public else (
+            'PEERINGDB_CITY_INTERSECTION' if presence else 'HEURISTIC_FALLBACK')
+        interconnect = 'PUBLIC_IXP_LAN' if public else ('PNI_OR_COLO_FACILITY' if city and classification.get('is_identified') else 'BACKBONE_TRANSIT')
+        dedicated = {hop2['ip']: hop2} if hop2 and hop2.get('ip') else {}
+        bounded = bound_path_rtts(hops, dedicated)
+        effective = next(h.get('effective_rtt_ms') for h in bounded if h.get('ip') == border['ip'])
+        if parsed.get('city') and not public:
+            # Do not invent a building from a city code or other hops in this path.
+            classification.update(city=city, metro_code=code,
+                ixp_name=f'PNI / Direct Handoff at {city}', facility=None,
+                coordinates=ANYCAST_COLO_HUBS.get(code, {}).get('coordinates'),
+                matched_hop_ip=border['ip'], rtt_to_ixp_ms=min_rtt(border),
+                confidence='75% (PeeringDB city presence)' if presence else '65% (rDNS metro handoff inference)',
+                peering_type=f'PNI / Direct Handoff at {city}',
+                is_identified=True, detection_method='Reverse DNS Geolocation + Analisi AS-Boundary')
+        return {'target': target, 'border_ip': border['ip'], 'border_rdns': border.get('rdns'),
+                'city': city, 'metro_code': code, 'asn': border.get('asn') or parsed.get('asn'),
+                'raw_rtt_ms': min_rtt(border), 'effective_rtt_ms': effective,
+                'copp_detected': any(h['copp_detected'] for h in bounded),
+                'interconnect_type': interconnect, 'ixp_match_method': method,
+                'confidence': (1.0 if method == 'CIDR_EXACT' else 0.90 if public else 0.75 if presence else 0.65),
+                'colocated_peering_presence': presence, '_classification': classification,
+                '_hops': hops, '_authoritative_location': bool(parsed.get('city'))}
+
+    def _reconcile_egress(self, result, wan, info, multi, cdn, target):
+        primary = result.get('traceroute_hops') or []
+        result['access_profile']['target'] = target
+        colo = result.get('anycast_colo')
+        primary_exit = self._resolve_exit_path(target, primary, wan, info, colo, result.get('hop2_bng'))
+        exits = [primary_exit] if primary_exit else []
+        target_ips = {'cloudflare': '1.1.1.1', 'google': '8.8.8.8', 'aws': '13.248.118.1',
+                      'domestic_ixp': '217.29.66.1'}
+        for name, path in multi.get('raw_paths', {}).items():
+            dest = target_ips.get(name, (multi.get('targets', {}).get(name) or {}).get('target_ip') or name)
+            node = self._resolve_exit_path(dest, path, wan, info, None, result.get('hop2_bng'))
+            if node and not any(e['target'] == dest and e['border_ip'] == node['border_ip'] for e in exits):
+                exits.append(node)
+        # CDN consensus selects an observed border; it cannot relocate any border.
+        wanted = ANYCAST_COLO_HUBS.get(cdn.get('verified_metro_code'), {}).get('city')
+        matching = [e for e in exits if e is not primary_exit and wanted
+                    and self._city_key(e['city']) == self._city_key(wanted)]
+        # Prefer the observed route with the tightest downstream RTT bound.
+        selected = min(matching, key=lambda e: e['effective_rtt_ms'] if e['effective_rtt_ms'] is not None else float('inf')) if matching else primary_exit
+        metro = result['metro_egress']
+        if selected:
+            cl = selected['_classification']
+            changed = selected is not primary_exit or selected['_authoritative_location'] or selected['ixp_match_method'] == 'CIDR_EXACT'
+            if changed:
+                for old, new in [('detected_ixp', 'ixp_name'), ('ixp_city', 'city'),
+                                 ('ixp_facility', 'facility'), ('peering_type', 'peering_type'),
+                                 ('detection_method', 'detection_method'), ('confidence', 'confidence'),
+                                 ('matched_subnet', 'matched_subnet'), ('coordinates', 'coordinates')]:
+                    result[old] = cl.get(new)
+                result['matched_hop_ip'] = selected['border_ip']
+                result['rtt_to_ixp_ms'] = selected['raw_rtt_ms']
+                result['is_identified'] = cl.get('is_identified', False)
+                result['datacenter_facility'] = None
+                result['ixp_facility'] = cl.get('facility')
+            metro.update(metro_city=selected['city'], metro_code=selected['metro_code'],
+                         exit_router_ip=selected['border_ip'], exit_router_rdns=selected['border_rdns'],
+                         interconnect_type=selected['interconnect_type'], ixp_match_method=selected['ixp_match_method'],
+                         interconnect_confidence=selected['confidence'],
+                         colocated_peering_presence=selected['colocated_peering_presence'],
+                         facility_name=result.get('ixp_facility'), verified_via=result.get('detection_method'),
+                         transit_carrier=result.get('peering_type'))
+            result['egress_latency_path'] = {'target': selected['target'], 'hops': selected['_hops']}
+        else:
+            http_hub = ANYCAST_COLO_HUBS.get(colo, {})
+            metro.update(metro_city=http_hub.get('city'), metro_code=colo if http_hub else None,
+                         exit_router_ip=None, facility_name=None,
+                         interconnect_type='BACKBONE_TRANSIT', ixp_match_method='HEURISTIC_FALLBACK')
+        if selected and selected['interconnect_type'] != 'PUBLIC_IXP_LAN':
+            facility = result.get('datacenter_facility') or {}
+            if (facility.get('matched_ip') != selected['border_ip']
+                    or self._city_key(facility.get('city')) != self._city_key(selected['city'])):
+                result['datacenter_facility'] = None
+                result['ixp_facility'] = None
+                metro['facility_name'] = None
+        if not selected or not selected['city']:
+            if selected:
+                result['detected_ixp'] = 'IXP non identificato'
+                result['is_identified'] = False
+                result['peering_type'] = None
+                metro['facility_name'] = None
+            result['datacenter_facility'] = None
+            result['coordinates'] = None
+            result['ixp_city'] = None
+            result['ixp_facility'] = None
+        documented = [{k: v for k, v in e.items() if not k.startswith('_')} for e in exits]
+        cities = {self._city_key(e['city']) for e in exits if e['city']}
+        if wanted:
+            cities.add(self._city_key(wanted))
+        metro.update(routing_topology='MULTI_EXIT_SPLIT' if len(cities) > 1 else 'SINGLE_EXIT', exit_paths=documented)
+        result['egress_paths'] = documented
+        result['multi_target_analysis'] = multi
+        result['multi_cdn_inspection'] = cdn
+        # Render the primary route with its own hub even if the summary selects another.
+        result['topological_flow'] = build_topological_flow(primary, facility=None,
+            colo=primary_exit['metro_code'] if primary_exit else None, target=target)
+        return result
+
     def reclassify_offline(
         self,
         wan_data: Dict[str, Any],
         hops: List[Dict[str, Any]],
         hop2_metrics: Optional[Dict[str, Any]] = None,
         anycast_colo: Optional[str] = None,
-        target: Optional[str] = "1.1.1.1"
+        target: Optional[str] = "1.1.1.1",
+        multi_target_analysis: Optional[Dict[str, Any]] = None,
+        multi_cdn_inspection: Optional[Dict[str, Any]] = None,
+        peeringdb_info: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Rivaluta la classificazione IXP/PNI e l'access profile in modalità 100% offline
@@ -2599,6 +2799,7 @@ class IXPAnalyzer:
 
         user_asn = wan_data.get("asn") or ""
         asn_clean = re.sub(r"[^\d]", "", str(user_asn))
+        supplied_peeringdb = peeringdb_info
         peeringdb_info = {}
         if asn_clean:
             asn_int = int(asn_clean)
@@ -2615,6 +2816,9 @@ class IXPAnalyzer:
                     "asn": asn_int,
                     "facilities": EMBEDDED_ASN_PEERING_HUBS[asn_int]
                 }
+
+        if supplied_peeringdb is not None:
+            peeringdb_info = supplied_peeringdb
 
         classification = self._classify_exchange(
             matched_ixp=matched_ixp,
@@ -2654,8 +2858,8 @@ class IXPAnalyzer:
                 classification["coordinates"] = facility["coordinates"]
 
         topo_flow = build_topological_flow(hops, facility=facility, colo=anycast_colo, target=target)
-        metro_city = classification.get("city") or (facility.get("city") if facility else "Milano")
-        metro_code = (facility.get("metro_code") if facility else (anycast_colo or "MXP"))
+        metro_city = classification.get("city") or (facility.get("city") if facility else None)
+        metro_code = (classification.get("metro_code") or (facility.get("metro_code") if facility else anycast_colo))
         metro_egress = {
             "metro_city": metro_city,
             "metro_code": metro_code,
@@ -2665,6 +2869,9 @@ class IXPAnalyzer:
             "verified_via": classification.get("detection_method") or "Offline Topology Replay"
         }
         multi_cdn = {"verified_metro": metro_city, "verified_metro_code": metro_code, "cloudflare": {"colo": anycast_colo}} if anycast_colo else {}
+
+        if multi_cdn_inspection is not None:
+            multi_cdn = multi_cdn_inspection
 
         transit_carriers = []
         for h in hops:
@@ -2684,7 +2891,7 @@ class IXPAnalyzer:
             matched_ixp=matched_ixp
         )
 
-        return {
+        result = {
             "detected_ixp": classification.get("ixp_name"),
             "ixp_city": classification.get("city"),
             "ixp_facility": classification.get("facility") if is_identified else None,
@@ -2698,7 +2905,7 @@ class IXPAnalyzer:
             "anycast_colo": anycast_colo,
             "traceroute_hops": hops,
             "access_profile": access_profile,
-            "hop2_bng": ({"ip": hops[1].get("ip"), **hop2_metrics} if len(hops) > 1 and hop2_metrics else None),
+            "hop2_bng": ({"ip": hop2_metrics.get("ip") or hops[1].get("ip"), **hop2_metrics} if len(hops) > 1 and hop2_metrics else None),
             "peeringdb_facilities": peeringdb_info.get("facilities", []),
             "analysis_notes": classification.get("notes", []),
             "hypothesis": classification.get("hypothesis"),
@@ -2710,4 +2917,4 @@ class IXPAnalyzer:
             "topological_flow": topo_flow,
             "transit_carriers": transit_carriers
         }
-
+        return self._reconcile_egress(result, wan_data, peeringdb_info, (multi_target_analysis or {}), multi_cdn, target)

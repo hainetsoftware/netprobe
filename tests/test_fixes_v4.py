@@ -168,7 +168,12 @@ class TestFixesV4(unittest.TestCase):
     # -------------------------------------------------------------
     def test_ixp_unidentified_isolated_hypothesis(self):
         analyzer = IXPAnalyzer()
-        res = analyzer.analyze_ixp_and_bng(wan_data={"city": "Milano", "coordinates": {"latitude": 45.46, "longitude": 9.19}})
+        # Keep this unidentified-path regression independent of the host's live network.
+        with patch.object(analyzer, 'probe_parallel_targets', return_value={}), \
+             patch.object(analyzer, 'measure_access_profile', return_value={'hops': []}), \
+             patch.object(analyzer, '_probe_hop2_bng', return_value=(None, {})), \
+             patch.object(analyzer, 'probe_path_mtu', return_value=None):
+            res = analyzer.analyze_ixp_and_bng(wan_data={"city": "Milano", "coordinates": {"latitude": 45.46, "longitude": 9.19}})
         # When no on-wire IXP matched, top-level peering_type, detection_method, confidence must be None
         self.assertIsNone(res.get("peering_type"))
         self.assertIsNone(res.get("detection_method"))

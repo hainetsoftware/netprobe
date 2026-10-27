@@ -10,6 +10,8 @@ Modulo Stime e Modelli Matematici Avanzati:
 import math
 import statistics
 from typing import Dict, Any, Optional, List
+from core.path_latency import bound_path_rtts, min_rtt
+
 
 from core.performance import compute_traffic_accounting
 
@@ -995,12 +997,12 @@ class NetworkEstimator:
                 "zurigo": (47.3769, 8.5417),
                 "londra": (51.5074, -0.1278)
             }
-            if not is_unidentified and ixp_city:
-                city_low = (ixp_city or "").lower()
-                for c_key, c_val in ixp_coords_map.items():
-                    if c_key in city_low:
-                        ixp_lat, ixp_lon = c_val
-                        break
+                if not is_unidentified and ixp_city:
+                    city_low = (ixp_city or "").lower()
+                    for c_key, c_val in ixp_coords_map.items():
+                        if c_key in city_low:
+                            ixp_lat, ixp_lon = c_val
+                            break
 
         straight_dist_km = None
         optical_min_rtt_ms = None
@@ -1018,6 +1020,32 @@ class NetworkEstimator:
         if not measured_rtt_ms:
             prim_lat = perf_data.get("primary_latency", {})
             measured_rtt_ms = prim_lat.get("min_ms") or prim_lat.get("median_ms")
+        raw_hub_rtt_ms = measured_rtt_ms
+        path_info = (ixp_data or {}).get("egress_latency_path") or {}
+        latency_hops = path_info.get("hops") or (ixp_data or {}).get("traceroute_hops") or (ixp_data or {}).get("access_profile", {}).get("hops") or []
+        latency_target = path_info.get("target") or (ixp_data or {}).get("access_profile", {}).get("target") or "1.1.1.1"
+        dedicated = {}
+        bng = (ixp_data or {}).get("hop2_bng") or {}
+        if bng.get("ip"):
+            dedicated[bng["ip"]] = bng
+        gateway = perf_data.get("gateway_latency") or perf_data.get("gateway_ping") or {}
+        if latency_hops and latency_hops[0].get("hop") == 1:
+            dedicated[latency_hops[0].get("ip")] = gateway
+        target_ping = None
+        for ping in (perf_data.get("latency_targets") or {}).values():
+            if ping.get("host") == latency_target:
+                target_ping = min_rtt(ping)
+        # primary_latency refers to the primary trace, never to a selected secondary exit.
+        if target_ping is None and not path_info:
+            target_ping = min_rtt(perf_data.get("primary_latency") or {})
+        elif target_ping is None and latency_target == ((ixp_data or {}).get("access_profile") or {}).get("target"):
+            target_ping = min_rtt(perf_data.get("primary_latency") or {})
+        bounded_hops = bound_path_rtts(latency_hops, dedicated, latency_target, target_ping)
+        copp_clamped = any(h["copp_detected"] for h in bounded_hops)
+        for h in bounded_hops:
+            if h.get("ip") == matched_hop and h.get("effective_rtt_ms") is not None:
+                measured_rtt_ms = h["effective_rtt_ms"]
+                break
         hub_rtt_ms = measured_rtt_ms
 
         # Latenza gateway LAN/Wi-Fi
@@ -1027,6 +1055,8 @@ class NetworkEstimator:
             hops = (ixp_data or {}).get("access_profile", {}).get("hops") or (ixp_data or {}).get("traceroute_hops") or []
             if hops and hops[0].get("hop") == 1:
                 gateway_min_ms = hops[0].get("min_ms") or (min(hops[0]["rtts"]) if hops[0].get("rtts") else None)
+        if bounded_hops and bounded_hops[0].get("hop") == 1:
+            gateway_min_ms = bounded_hops[0].get("effective_rtt_ms")
         if gateway_min_ms is None:
             gateway_min_ms = 0.0
 
@@ -1098,15 +1128,24 @@ class NetworkEstimator:
             calculation_basis = f"Anycast PoP verificato (colo={colo_cand}) su RTT edge netto"
         elif na_reason is None and hub_rtt_ms is not None and fiber_floor_ms is not None:
             acc_prof = (ixp_data or {}).get("access_profile")
-            if acc_prof and acc_prof.get("hops") is not None:
-                hops = acc_prof.get("hops") or []
+            verified_access_ms = min_rtt(bng)
+            if verified_access_ms is not None:
+                access_bound = next((h.get("effective_rtt_ms") for h in bounded_hops if h.get("ip") == bng.get("ip")), None)
+                if access_bound is not None:
+                    verified_access_ms = min(verified_access_ms, access_bound)
+            if verified_access_ms is not None:
+                local_access_hop_min_ms = verified_access_ms
+                denominator = round(hub_rtt_ms - verified_access_ms, 2)
+                calculation_basis = "Solo tratta di trasporto (Hop 2 BNG verificato)"
+            elif acc_prof and acc_prof.get("hops") is not None:
+                hops = bounded_hops or acc_prof.get("hops") or []
                 cand_hop_ms = None
                 for h in sorted(hops, key=lambda x: x.get("hop", 0)):
                     h_num = h.get("hop", 0)
                     if h_num < 2:
                         continue
                     rtts = h.get("rtts") or ([h.get("rtt_ms")] if h.get("rtt_ms") is not None else [])
-                    h_min = h.get("min_ms") if h.get("min_ms") is not None else (min(rtts) if rtts else None)
+                    h_min = h.get("effective_rtt_ms") if h.get("effective_rtt_ms") is not None else (h.get("min_ms") if h.get("min_ms") is not None else (min(rtts) if rtts else None))
                     if h_min is None:
                         continue
                     # Il salto di accesso e' significativamente piu' vicino all'utente rispetto all'hub remoto
@@ -1152,6 +1191,10 @@ class NetworkEstimator:
             rating = "Moderato (Detour di Peering presente)"
 
         return {
+            "copp_clamped": copp_clamped,
+            "copp_detected": copp_clamped,
+            "raw_hub_rtt_ms": raw_hub_rtt_ms,
+            "latency_target": latency_target,
             "nearest_ixp_name": ixp_name,
             "ixp_facility": ixp_facility,
             "ixp_city": ixp_city,

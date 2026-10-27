@@ -74,6 +74,7 @@ htmlcov/
 # --- NetProbe Local Runtime, Cache & Diagnostic Output ---
 *.log
 scan.json
+netprobe_report_*.json
 /tmp/
 peeringdb_cache.json
 ~/.netprobe/
