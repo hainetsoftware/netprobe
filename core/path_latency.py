@@ -27,7 +27,7 @@ def bound_path_rtts(hops, dedicated=None, target=None, target_rtt=None):
         raw = min_rtt(hop)
         ping = min_rtt(dedicated.get(hop.get('ip'), {}))
         candidates = [v for v in (raw, ping, downstream) if v is not None]
-        if target and hop.get('ip') == target and target_rtt is not None:
+        if target and target_rtt is not None and (hop.get('ip') == target or target in (hop.get('ips') or [])):
             candidates.append(target_rtt)
         effective = min(candidates) if candidates else None
         clamped = raw is not None and effective is not None and effective < raw

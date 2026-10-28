@@ -949,26 +949,38 @@ def merge_multi_target_paths(target_paths: Dict[str, List[Dict[str, Any]]]) -> D
     }
 
     for t_name, hops in sorted_paths.items():
-        min_rtt = None
         exit_pop = None
         handoff_asn = None
         handoff_carrier = None
 
+        public_hops = []
         for h in hops:
-            rtts = h.get("rtts") or ([h.get("rtt_ms")] if h.get("rtt_ms") is not None else [])
-            if rtts and (min_rtt is None or min(rtts) < min_rtt):
-                min_rtt = min(rtts)
+            try:
+                if ipaddress.ip_address(h.get("ip", "*")).is_global:
+                    public_hops.append(h)
+            except ValueError:
+                continue
+        terminal = next((h for h in reversed(public_hops)
+                         if min_rtt(h) is not None), {})
+        terminal_rtt = terminal.get("effective_rtt_ms")
+        if terminal_rtt is None:
+            terminal_rtt = min_rtt(terminal)
+        destination_asns = {"cloudflare": 13335, "1.1.1.1": 13335,
+                            "google": 15169, "8.8.8.8": 15169,
+                            "aws": 16509, "13.248.118.1": 16509}
+        dest_asn = destination_asns.get(t_name, terminal.get("asn"))
+        for h in public_hops:
+            if dest_asn and h.get("asn") == dest_asn:
+                break
+            parsed = h.get("rdns_parsed") or parse_rdns_metro_and_role(h.get("rdns"))
+            exit_pop = parsed.get("metro_code")
+
+        for h in hops:
             hasn = h.get("asn")
             if hasn and hasn in TIER1_ASNS:
                 transit_carriers.add(f"{TIER1_ASNS[hasn]} (AS{hasn})")
                 handoff_asn = hasn
                 handoff_carrier = TIER1_ASNS[hasn]
-            hrdns = (h.get("rdns") or "").lower()
-            if hrdns:
-                for token, code in CITY_TOKEN_MAP.items():
-                    if re.search(r"\b" + re.escape(token) + r"\b", hrdns):
-                        exit_pop = code
-                        break
 
         last_hop = hops[-1] if hops else {}
         target_ip = last_hop.get("ip")
@@ -978,7 +990,7 @@ def merge_multi_target_paths(target_paths: Dict[str, List[Dict[str, Any]]]) -> D
         targets_summary[t_name] = {
             "target_ip": target_ip,
             "hop_count": len(hops),
-            "min_rtt_ms": round(min_rtt, 2) if min_rtt is not None else None,
+            "min_rtt_ms": round(terminal_rtt, 2) if terminal_rtt is not None else None,
             "exit_pop": exit_pop or "MXP",
             "handoff_carrier": handoff_carrier,
             "handoff_asn": handoff_asn
@@ -2646,7 +2658,7 @@ class IXPAnalyzer:
                                  'ip': str(addr), 'subnet': str(network), 'rtt_ms': min_rtt(h)})
         return None, None
 
-    def _resolve_exit_path(self, target, hops, wan, info, colo, hop2):
+    def _resolve_exit_path(self, target, hops, wan, info, colo, hop2, target_rtt=None):
         """Resolve a border and its metadata as one inseparable observation."""
         hops = sorted(hops, key=lambda h: h.get('hop', 0))
         ixp, evidence = self._find_ixp_in_hops(hops)
@@ -2656,7 +2668,7 @@ class IXPAnalyzer:
         dest_asn = {'1.1.1.1': 13335, '8.8.8.8': 15169, '13.248.118.1': 16509}.get(target)
         candidates = []
         for h in hops:
-            if h.get('ip') == target or (dest_asn and h.get('asn') == dest_asn):
+            if h.get('ip') == target or target in (h.get('ips') or []) or (dest_asn and h.get('asn') == dest_asn):
                 break
             try:
                 addr = ipaddress.ip_address(h.get('ip', '*'))
@@ -2682,7 +2694,7 @@ class IXPAnalyzer:
             'PEERINGDB_CITY_INTERSECTION' if presence else 'HEURISTIC_FALLBACK')
         interconnect = 'PUBLIC_IXP_LAN' if public else ('PNI_OR_COLO_FACILITY' if city and classification.get('is_identified') else 'BACKBONE_TRANSIT')
         dedicated = {hop2['ip']: hop2} if hop2 and hop2.get('ip') else {}
-        bounded = bound_path_rtts(hops, dedicated)
+        bounded = bound_path_rtts(hops, dedicated, target=target, target_rtt=target_rtt)
         effective = next(h.get('effective_rtt_ms') for h in bounded if h.get('ip') == border['ip'])
         if parsed.get('city') and not public:
             # Do not invent a building from a city code or other hops in this path.

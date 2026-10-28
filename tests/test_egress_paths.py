@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from core.ixp_analyzer import IXPAnalyzer, parse_rdns_metro_and_role
+from core.ixp_analyzer import IXPAnalyzer, merge_multi_target_paths, parse_rdns_metro_and_role
 from core.estimators import NetworkEstimator
 from core.path_latency import bound_path_rtts
 
@@ -132,6 +132,55 @@ class EgressPathTests(unittest.TestCase):
         self.assertEqual([h['effective_rtt_ms'] for h in bounded], [0, 6.44, 6.44])
         self.assertEqual(path, original)
         self.assertEqual(bound_path_rtts(path[:-1], target='1.1.1.1', target_rtt=1)[0]['effective_rtt_ms'], 18)
+
+    def test_ecmp_target_ping_bounds_final_hop_and_exit(self):
+        path = copy.deepcopy(self.milan)
+        path[-1].update(ip='142.251.235.179', asn=None, rtts=[14.68], rtt_ms=14.68,
+                        ips=['142.251.235.179', '142.251.235.173', '8.8.8.8'])
+        original = copy.deepcopy(path)
+        bounded = bound_path_rtts(path, target='8.8.8.8', target_rtt=6.2)
+        self.assertEqual(bounded[-1]['effective_rtt_ms'], 6.2)
+        self.assertTrue(bounded[-1]['copp_detected'])
+        self.assertEqual(bounded[-2]['effective_rtt_ms'], 6.2)
+        result = self.analyzer._resolve_exit_path('8.8.8.8', path, self.wan,
+            self.presence, None, self.bng, target_rtt=6.2)
+        self.assertEqual(result['border_ip'], '185.191.180.157')
+        self.assertEqual(result['effective_rtt_ms'], 6.2)
+        self.assertEqual(path, original)
+
+    def test_exit_uses_target_ping_for_primary_destination(self):
+        path = copy.deepcopy(self.rome)
+        path[-1].update(rtts=[14.68], rtt_ms=14.68)
+        result = self.analyzer._resolve_exit_path('1.1.1.1', path, self.wan,
+            self.presence, None, self.bng, target_rtt=6.4)
+        self.assertEqual(result['effective_rtt_ms'], 6.4)
+        self.assertTrue(result['copp_detected'])
+
+    def test_merge_uses_terminal_rtt_and_authoritative_border_pop(self):
+        for hostname, metro in [('rs1-pi01-rs1-rm02.rm02.garr.net', 'FCO'),
+                                ('rs1-to01-rs1-mi02.mi02.garr.net', 'MXP')]:
+            with self.subTest(hostname=hostname):
+                path = copy.deepcopy(self.milan)
+                path[0].update(rtts=[1.43], rtt_ms=1.43)
+                path[-2]['rdns'] = hostname
+                # Destination-AS hostnames cannot overwrite the ISP border city.
+                path[-1]['rdns'] = 'router.fra.example.net'
+                path.append(hop(8, '*', None))
+                original = copy.deepcopy(path)
+                summary = merge_multi_target_paths({'google': path})['targets']['google']
+                self.assertEqual(summary['min_rtt_ms'], 6.5)
+                self.assertEqual(summary['exit_pop'], metro)
+                self.assertEqual(path, original)
+
+    def test_merge_partial_path_uses_clamped_public_terminal_and_cached_pop(self):
+        path = copy.deepcopy(self.milan[:-1])
+        path[-1].update(effective_rtt_ms=6.2, rdns_parsed={'metro_code': 'FCO'})
+        path.extend([hop(8, '192.168.1.1', .1), hop(9, '*', None)])
+        summary = merge_multi_target_paths({'google': path})['targets']['google']
+        self.assertEqual(summary['min_rtt_ms'], 6.2)
+        self.assertEqual(summary['exit_pop'], 'FCO')
+        summary = merge_multi_target_paths({'google': [hop(1, '192.168.1.1', 1.43)]})['targets']['google']
+        self.assertIsNone(summary['min_rtt_ms'])
 
     def test_live_pipeline_uses_the_same_per_path_reconciliation(self):
         multi = {'raw_paths': {'cloudflare': self.rome, 'google': self.milan}}
