@@ -10,6 +10,7 @@ import os
 import argparse
 import json
 import time
+import sqlite3
 
 # Assicura encoding UTF-8 per console multipiattaforma (Windows cp1252 / CI fix)
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -48,19 +49,19 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from core.platform_info import get_system_summary
-from core.lan_scanner import LanScanner
-from core.wan_probe import WanProbe
-from core.ixp_analyzer import IXPAnalyzer
-from core.performance import PerformanceTester
-from core.estimators import NetworkEstimator
-from core.validators import validate_scan_results
-from core.provenance import build_field_provenance
-from cli.terminal_ui import TerminalUI
-
 
 def run_cli_scan(quick: bool = False, full: bool = False, json_output: bool = False, no_color: bool = False, export_path: str = None):
     """Esegue la scansione in modalità CLI."""
+    from core.platform_info import get_system_summary
+    from core.lan_scanner import LanScanner
+    from core.wan_probe import WanProbe
+    from core.ixp_analyzer import IXPAnalyzer
+    from core.performance import PerformanceTester
+    from core.estimators import NetworkEstimator
+    from core.validators import validate_scan_results
+    from core.provenance import build_field_provenance
+    from cli.terminal_ui import TerminalUI
+    from core.storage import StorageManager
     ui = TerminalUI(no_color=no_color)
     sys_summary = get_system_summary()
 
@@ -112,6 +113,11 @@ def run_cli_scan(quick: bool = False, full: bool = False, json_output: bool = Fa
 
     # Mappatura della provenienza dei campi (Task 3)
     full_report["field_status"] = build_field_provenance(full_report)
+
+    try:
+        StorageManager().store_telemetry_run(full_report)
+    except (OSError, sqlite3.Error) as error:
+        print(f"[NetProbe] Cache non disponibile: {error}", file=sys.stderr)
 
     # Output JSON puro
     if json_output:
@@ -178,6 +184,10 @@ def main():
     parser.add_argument("--export", type=str, metavar="FILE", help="Esporta il report diagnostico in file JSON o HTML")
 
     args = parser.parse_args()
+    from core.bootstrap import ensure_dependencies
+    from core.privileges import announce_restrictions
+    ensure_dependencies()
+    announce_restrictions()
 
     # Se l'utente specifica --non-interactive, --cli, --json, --export, --quick o --full senza --tui esplicito, esegui headless
     headless = args.non_interactive or args.json or args.quick or args.full or (args.export and not args.tui)
@@ -206,7 +216,8 @@ def main():
                 no_color=args.no_color,
                 export_path=args.export
             )
-        except Exception:
+        except Exception as error:
+            print(f"[NetProbe] Interfaccia interattiva non disponibile: {error}. Uso delle tabelle CLI.", file=sys.stderr)
             # Ripiego pulito su modalità CLI in caso di assenza TTY o terminale non supportato
             run_cli_scan(
                 quick=args.quick,

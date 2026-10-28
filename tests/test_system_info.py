@@ -92,7 +92,7 @@ class SystemInfoTests(unittest.TestCase):
     def test_summary_and_cli_bind_canonical_fields(self):
         with patch('core.platform_info.get_pretty_os_info', return_value='macOS 15.1 (arm64)'), \
              patch('core.platform_info.platform.node', return_value='test-host'), \
-             patch('core.platform_info.platform.python_version', return_value='3.15.0'):
+             patch('core.platform_info.sys.version', '3.15.0 (test runtime)'):
             system = get_system_summary()
         lan = {'primary_interface': {'name': 'en0', 'type': 'Ethernet'}, 'interface_type': 'Wi-Fi'}
         expected = 'Host: test-host | OS: macOS 15.1 (arm64) | Python: 3.15.0 | Interfaccia: en0 (Wi-Fi)'

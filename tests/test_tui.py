@@ -204,6 +204,18 @@ class TestTUIViews(unittest.TestCase):
 
 
 class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from core.storage import StorageManager
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        storage = StorageManager(Path(directory.name) / 'netprobe.db')
+        patcher = patch('tui.app.StorageManager', return_value=storage)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     @classmethod
     def setUpClass(cls):
         fixtures_dir = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -477,7 +489,7 @@ class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
             initial_theme = app.theme
             initial_screen_bg = app.screen.styles.background
             initial_card_bg = card.styles.background
-            self.assertIn("theme-dark", app.classes)
+            self.assertIn("theme-midnight-slate", app.classes)
 
             # Toggle tramite tasto 't'
             await pilot.press("t")
@@ -485,7 +497,7 @@ class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
             self.assertNotEqual(app.theme, initial_theme)
             self.assertNotEqual(app.screen.styles.background, initial_screen_bg)
             self.assertNotEqual(card.styles.background, initial_card_bg)
-            self.assertIn("theme-dracula", app.classes)
+            self.assertIn("theme-monochrome-light", app.classes)
             status_text = str(app.query_one("#status-label", Label).render())
             self.assertIn("Tema grafico attivo", status_text)
 
@@ -494,7 +506,7 @@ class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
             app.action_toggle_theme()
             await pilot.pause()
             self.assertNotEqual(app.screen.styles.background, prev_bg)
-            self.assertIn("theme-cyberpunk", app.classes)
+            self.assertIn("theme-oled-black", app.classes)
 
 
 if __name__ == "__main__":

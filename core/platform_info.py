@@ -32,18 +32,28 @@ def is_linux() -> bool:
 
 def is_root() -> bool:
     """Verifica se l'applicazione è in esecuzione con privilegi elevati (root/admin)."""
-    if is_windows():
-        try:
-            import ctypes
-            return ctypes.windll.shell32.IsUserAnAdmin() != 0
-        except Exception:
-            return False
-    else:
-        return os.geteuid() == 0
+    from core.privileges import is_elevated
+    return is_elevated()
+
 
 def has_command(cmd_name: str) -> bool:
     """Verifica se un comando o binario è disponibile nel PATH di sistema."""
     return shutil.which(cmd_name) is not None
+
+def _kill_and_reap(proc):
+    """Bound cleanup even if a descendant inherited the subprocess pipes."""
+    proc.kill()
+    try:
+        proc.communicate(timeout=1.0)
+    except subprocess.TimeoutExpired:
+        for stream in (proc.stdout, proc.stderr):
+            if stream:
+                stream.close()
+        try:
+            proc.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            pass
+
 
 def run_cmd(args: List[str], timeout: float = 6.0) -> Tuple[int, str, str]:
     """
@@ -66,7 +76,7 @@ def run_cmd(args: List[str], timeout: float = 6.0) -> Tuple[int, str, str]:
         stdout, stderr = proc.communicate(timeout=timeout)
         return proc.returncode, stdout.strip(), stderr.strip()
     except subprocess.TimeoutExpired:
-        proc.kill()
+        _kill_and_reap(proc)
         return -1, "", "Timeout scaduto"
     except FileNotFoundError:
         return 127, "", f"Comando '{args[0]}' non trovato"
@@ -94,7 +104,7 @@ def run_cmd_shell(cmd_str: str, timeout: float = 6.0) -> Tuple[int, str, str]:
         stdout, stderr = proc.communicate(timeout=timeout)
         return proc.returncode, stdout.strip(), stderr.strip()
     except subprocess.TimeoutExpired:
-        proc.kill()
+        _kill_and_reap(proc)
         return -1, "", "Timeout scaduto"
     except Exception as e:
         return -2, "", str(e)
@@ -109,6 +119,6 @@ def get_system_summary() -> dict:
         "machine": platform.machine(),
         "processor": platform.processor(),
         "hostname": platform.node(),
-        "python_version": platform.python_version(),
+        "python_version": sys.version.split()[0],
         "is_root": is_root()
     }

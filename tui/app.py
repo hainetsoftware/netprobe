@@ -8,6 +8,9 @@ import os
 import sys
 import time
 import json
+import sqlite3
+from core.storage import StorageManager
+from ui.menu import ManagementMenu
 from typing import Optional, Dict, Any, List, Tuple
 
 from textual import work
@@ -51,58 +54,17 @@ TAB_IDS: List[str] = [
 ]
 
 CUSTOM_THEMES: List[Theme] = [
-    Theme(
-        name="netprobe-dark",
-        primary="#9bb8ce",
-        secondary="#718ba3",
-        accent="#9bb8ce",
-        foreground="#f1f5f9",
-        background="#0b0f17",
-        surface="#131b26",
-        panel="#202d3d",
-        success="#9bbda7",
-        warning="#d0ba8c",
-        error="#d3a0a5",
-        dark=True,
-    ),
-    Theme(
-        name="netprobe-cyberpunk",
-        primary="#ff2a85",
-        secondary="#00f0ff",
-        accent="#fcee0a",
-        foreground="#f8fafc",
-        background="#090414",
-        surface="#160b2e",
-        panel="#2d1657",
-        success="#00ff9f",
-        warning="#fcee0a",
-        error="#ff0055",
-        dark=True,
-    ),
-    Theme(
-        name="netprobe-matrix",
-        primary="#00ff41",
-        secondary="#008f11",
-        accent="#00ff41",
-        foreground="#d1ffd7",
-        background="#020804",
-        surface="#07140b",
-        panel="#0f2916",
-        success="#00ff41",
-        warning="#a6ff00",
-        error="#ff3333",
-        dark=True,
-    ),
+    Theme(name="midnight-slate", primary="#9bb8ce", secondary="#718ba3", accent="#9bb8ce",
+          foreground="#f1f5f9", background="#0b0f17", surface="#131b26", panel="#202d3d", dark=True),
+    Theme(name="monochrome-light", primary="#303030", secondary="#505050", accent="#202020",
+          foreground="#111111", background="#ffffff", surface="#f2f2f2", panel="#e2e2e2", dark=False),
+    Theme(name="oled-black", primary="#b8c8d8", secondary="#8999aa", accent="#ffffff",
+          foreground="#eeeeee", background="#000000", surface="#000000", panel="#101010", dark=True),
+    Theme(name="nordic-frost", primary="#88c0d0", secondary="#81a1c1", accent="#8fbcbb",
+          foreground="#eceff4", background="#2e3440", surface="#3b4252", panel="#434c5e", dark=True),
 ]
-
 THEME_CYCLE: List[Tuple[str, str, str]] = [
-    ("netprobe-dark", "theme-dark", "NetProbe Dark (Default)"),
-    ("dracula", "theme-dracula", "Dracula"),
-    ("netprobe-cyberpunk", "theme-cyberpunk", "Cyberpunk Neon"),
-    ("netprobe-matrix", "theme-matrix", "Matrix Terminal"),
-    ("nord", "theme-nord", "Arctic Nord"),
-    ("tokyo-night", "theme-tokyo-night", "Tokyo Night"),
-    ("textual-light", "theme-light", "High-Contrast Light"),
+    (theme.name, "theme-" + theme.name, theme.name) for theme in CUSTOM_THEMES
 ]
 
 
@@ -112,6 +74,7 @@ class NetProbeTUIApp(App):
     TITLE = "NETPROBE PRO"
     SUB_TITLE = "Advanced LAN & Internet Intelligence and Estimation Suite"
     CSS_PATH = "style.tcss"
+    ENABLE_COMMAND_PALETTE = False
 
     BINDINGS = [
         Binding("q", "quit", "Esci"),
@@ -119,6 +82,8 @@ class NetProbeTUIApp(App):
         Binding("s", "start_full_scan", "Completa", show=False),
         Binding("r", "start_quick_scan", "Scansione Rapida"),
         Binding("e", "export_report", "Esporta"),
+        Binding("m", "management", "Gestione"),
+        Binding("M", "management", "Gestione", show=False),
         Binding("t", "toggle_theme", "Tema"),
         Binding("T", "toggle_theme", "Tema", show=False),
         Binding("left", "previous_tab", "Scheda Prec.", show=False),
@@ -140,8 +105,15 @@ class NetProbeTUIApp(App):
         Binding("9", "tab_9", "Dispositivi", show=False),
     ]
 
-    def __init__(self, initial_data: Optional[Dict[str, Any]] = None, auto_scan: bool = False):
+    def __init__(self, initial_data: Optional[Dict[str, Any]] = None, auto_scan: bool = False, storage=None):
         super().__init__()
+        self.storage = storage
+        self.cache_error = None
+        if self.storage is None:
+            try:
+                self.storage = StorageManager()
+            except (OSError, sqlite3.Error) as error:
+                self.cache_error = str(error)
         self.initial_data = initial_data
         self.auto_scan = auto_scan
         self.is_scanning = False
@@ -154,8 +126,7 @@ class NetProbeTUIApp(App):
         self._theme_index = 0
         for custom_theme in CUSTOM_THEMES:
             self.register_theme(custom_theme)
-        self.theme = THEME_CYCLE[0][0]
-        self.add_class(THEME_CYCLE[0][1])
+        self.theme = self.storage.get_theme() if self.storage else THEME_CYCLE[0][0]
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -164,7 +135,7 @@ class NetProbeTUIApp(App):
                 yield Button("Completa", id="btn-full")
                 yield Button("Rapida", id="btn-quick")
                 yield Button("Export", id="btn-export")
-                yield Button("Tema (T)", id="btn-theme")
+                yield Button("Gestione (M)", id="btn-theme")
             with Vertical(id="status-container"):
                 yield Label("Pronto. Seleziona un'azione per iniziare.", id="status-label", markup=False)
                 yield ProgressBar(id="progress-bar", total=100, show_eta=False)
@@ -190,6 +161,8 @@ class NetProbeTUIApp(App):
         yield Footer()
 
     def on_mount(self):
+        if self.cache_error:
+            self.notify("Cache non disponibile: " + self.cache_error, severity="warning")
         if self.initial_data:
             self._apply_scan_data(self.initial_data)
             self.query_one("#status-label", Label).update("Dati diagnostici caricati con successo.")
@@ -209,9 +182,23 @@ class NetProbeTUIApp(App):
         self.add_class(matched_class)
         self.refresh_css(animate=False)
 
+    def action_management(self) -> None:
+        if self.is_scanning:
+            self.notify("Attendere il completamento della scansione.")
+        elif self.storage:
+            self.push_screen(ManagementMenu(self.storage))
+        else:
+            self.notify("Cache non disponibile: " + str(self.cache_error), severity="warning")
+
     def action_toggle_theme(self) -> None:
         self._theme_index = (self._theme_index + 1) % len(THEME_CYCLE)
         theme_id, theme_cls, theme_label = THEME_CYCLE[self._theme_index]
+        if self.storage:
+            try:
+                self.storage.set_theme(theme_id)
+            except (OSError, sqlite3.Error) as error:
+                self.notify(str(error), severity="warning")
+                return
         self.theme = theme_id
         try:
             self.query_one("#status-label", Label).update(f"› Tema grafico attivo: {theme_label}")
@@ -302,7 +289,7 @@ class NetProbeTUIApp(App):
         elif btn_id == "btn-export":
             self.action_export_report()
         elif btn_id == "btn-theme":
-            self.action_toggle_theme()
+            self.action_management()
 
     def action_start_full_scan(self):
         if self.is_scanning:
@@ -426,6 +413,11 @@ class NetProbeTUIApp(App):
             validate_scan_results(full_report)
             full_report["field_status"] = build_field_provenance(full_report)
 
+            if self.storage:
+                try:
+                    self.storage.store_telemetry_run(full_report)
+                except (OSError, sqlite3.Error) as error:
+                    self.call_from_thread(self.notify, f"Cache non disponibile: {error}", severity="warning")
             progress_cb("Scansione completata con successo!", 100)
             self.call_from_thread(self._on_scan_success, full_report)
 

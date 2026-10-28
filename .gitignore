@@ -79,3 +79,21 @@ netprobe_report_*.json
 peeringdb_cache.json
 ~/.netprobe/
 tests/fixtures/*.anon.json.tmp
+
+# SQLite Databases & Ephemeral Logs
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+
+# NetProbe Local Telemetry Cache
+.netprobe/
+netprobe_cache/
+reports/*.json
+*.jsonl
+!reports/.gitkeep
