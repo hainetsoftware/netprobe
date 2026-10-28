@@ -81,6 +81,77 @@ class TestEstimators(unittest.TestCase):
         lossy = {"primary_latency": {"median_ms": 0.0, "jitter_ms": 0.0, "packet_loss_pct": 1.0}}
         self.assertAlmostEqual(self.est.calculate_itu_mos(lossy)["r_factor"], 93.2 - 95 / 5.3, places=1)
 
+    def test_degraded_vodafone_hotspot_with_failed_speedtest(self):
+        lan = {'gateway': {'ipv4': '10.172.9.33'}, 'primary_interface': {'type': 'Wi-Fi'}}
+        wan = {'asn': 30722, 'reverse_dns': 'mob-83-225-140-156.net.vodafone.it'}
+        perf = {'speed': {'valid': False, 'download_mbps': None, 'download_bytes': 100000},
+                'gateway_latency': {'min_ms': 2},
+                'primary_latency': {'min_ms': 40, 'median_ms': 65, 'iqr_ms': 15, 'jitter_ms': 20}}
+        for bng in (None, {'min_ms': 40, 'median_ms': 65, 'iqr_ms': 15, 'is_responsive': True}):
+            with self.subTest(bng=bng):
+                result = self.est.estimate_physical_medium(lan, wan, perf, {'hop2_bng': bng})
+                self.assertEqual(result['predicted_medium'], 'Mobile Cellular (4G LTE / 5G Mobile Hotspot)')
+                self.assertGreaterEqual(result['confidence_pct'], 60)
+                self.assertFalse(result['insufficient_data'])
+
+    def test_dynamic_gateway_requires_radio_latency(self):
+        for gateway in ('10.172.9.33', '172.17.9.129'):
+            result = self.est.estimate_physical_medium({'gateway': {'ipv4': gateway}}, {},
+                {'primary_latency': {'min_ms': 2, 'median_ms': 2.2}})
+            self.assertEqual(result['scores_breakdown']['Mobile Cellular (4G LTE / 5G Mobile Hotspot)'], 0)
+
+    def test_failed_or_small_speedtest_cannot_override_radio_evidence(self):
+        for speed in ({'valid': False}, {'valid': True, 'bytes_transferred': 100000}):
+            with self.subTest(speed=speed):
+                result = self.est.estimate_physical_medium(
+                    {'gateway': {'ipv4': '10.172.9.33'}},
+                    {'reverse_dns': 'mob-83-225-140-156.net.vodafone.it'},
+                    {'primary_latency': {'min_ms': 40, 'median_ms': 65},
+                     'speed': dict(speed, download_mbps=900, upload_mbps=300)})
+                self.assertIn('Mobile', result['predicted_medium'])
+                self.assertGreaterEqual(result['confidence_pct'], 60)
+                self.assertEqual(result['scores_breakdown']['FTTH (Fibra Ottica Pura GPON / XGS-PON)'], 0)
+
+    def test_randomized_wifi_gateway_adds_only_conditional_evidence(self):
+        lan = {'gateway': {'ipv4': '192.168.50.1',
+                          'vendor': 'Indirizzo MAC privato/randomizzato (Locally Administered)'},
+               'primary_interface': {'type': 'Wi-Fi'}}
+        result = self.est.estimate_physical_medium(lan, {},
+            {'primary_latency': {'min_ms': 40, 'median_ms': 65}})
+        self.assertIn('Mobile', result['predicted_medium'])
+        lan['primary_interface']['type'] = 'Ethernet'
+        result = self.est.estimate_physical_medium(lan, {},
+            {'primary_latency': {'min_ms': 40, 'median_ms': 65}})
+        self.assertTrue(result['insufficient_data'])
+
+    def test_mobile_rdns_matches_tokens_only(self):
+        for hostname in ('mob-83.net.vodafone.it', 'mob.example.net', 'r-lte.example.net',
+                         'r.hsupa.example.net', 'r-5g.example.net', 'immobile.example.net',
+                         'shelter.example.net'):
+            result = self.est.estimate_physical_medium({}, {'reverse_dns': hostname}, {})
+            expected = 0 if hostname.startswith(('immobile', 'shelter')) else 20
+            self.assertEqual(result['scores_breakdown']['Mobile Cellular (4G LTE / 5G Mobile Hotspot)'], expected)
+
+    def test_optical_guardrails_do_not_depend_on_medium_prediction(self):
+        ixp = {'detected_ixp': 'Roma (Hub NaMeX)', 'ixp_city': 'Roma',
+               'matched_hop_ip': '185.191.181.71', 'rtt_to_ixp_ms': 55, 'anycast_colo': 'FCO'}
+        for rdns, bng, latency in (
+            ('mob-83-225-140-156.net.vodafone.it', None, {'min_ms': 40}),
+            ('', {'min_ms': 40, 'spread_ms': 12}, {'min_ms': 40}),
+            ('', {'min_ms': 40, 'iqr_ms': 8}, {'min_ms': 40}),
+            ('', None, {'min_ms': 40, 'median_ms': 65, 'jitter_ms': 20}),
+        ):
+            with self.subTest(rdns=rdns, bng=bng, latency=latency):
+                wan = {'coordinates': {'latitude': 43.72, 'longitude': 10.4}, 'reverse_dns': rdns}
+                perf = {'primary_latency': latency, 'gateway_latency': {'min_ms': 2}}
+                result = self.est.estimate_optical_routing(wan, perf, dict(ixp, hop2_bng=bng),
+                                                         'Indeterminato (dati insufficienti)')
+                self.assertFalse(result['applicable'])
+                self.assertIsNone(result['routing_efficiency_pct'])
+                self.assertEqual(result['detour_rating'], 'Non applicabile')
+                self.assertEqual(result['not_applicable_reason'],
+                    'Non applicabile su collegamenti mobili o con latenza di accesso instabile/radio')
+
     def test_mos_insufficient_data(self):
         res = self.est.calculate_itu_mos({})
         self.assertTrue(res["insufficient_data"])

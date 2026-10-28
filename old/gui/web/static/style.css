@@ -1,5 +1,7 @@
-/* NetProbe Pro - Fluent / Windows 11 style, SOLO scala di grigi (chiaro/scuro automatico) */
+/* NetProbe Pro: restrained surfaces, semantic status colors and clear telemetry. */
 :root {
+  --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Consolas, "Fira Code", monospace;
   --bg: #f3f3f3;
   --bg-layer: #fbfbfb;
   --card: #ffffff;
@@ -45,9 +47,9 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html { filter: grayscale(1); color-scheme: light dark; }  /* garantisce scala di grigi anche per emoji */
+html { color-scheme: light dark; }
 body {
-  font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "SF Pro Text", Roboto, sans-serif;
+  font-family: var(--font-ui);
   background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.45;
   min-height: 100vh;
 }
@@ -103,7 +105,7 @@ main.container { padding-top: 20px; padding-bottom: 48px; }
 .progress-fill { height: 100%; width: 0; background: var(--accent); border-radius: 2px; transition: width .35s ease; }
 .scan-steps { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; font-size: 12px; color: var(--text-dim); }
 .scan-steps span.on { color: var(--text); font-weight: 600; }
-.scan-steps span.done::before { content: "✓ "; }
+.scan-steps span.done::before { content: "[OK] "; }
 .scan-error { display: none; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--stroke-strong); border-left: 4px solid var(--text); border-radius: 6px; background: var(--fill-subtle); }
 .scan-error.active { display: block; }
 
@@ -123,7 +125,7 @@ main.container { padding-top: 20px; padding-bottom: 48px; }
 .topo-node { flex: 1 1 170px; text-align: center; background: var(--fill-subtle); border: 1px solid var(--stroke); border-radius: 8px; padding: 12px 10px; }
 .topo-node-icon { font-size: 22px; margin-bottom: 4px; }
 .topo-node-name { font-weight: 600; font-size: 13px; }
-.topo-node-ip { font-size: 12px; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; color: var(--text-muted); }
+.topo-node-ip { font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); }
 .topo-node-meta { font-size: 11px; color: var(--text-dim); }
 .topo-arrow { align-self: center; color: var(--text-dim); font-size: 18px; }
 
@@ -149,17 +151,18 @@ main.container { padding-top: 20px; padding-bottom: 48px; }
 .detail-table td.label { color: var(--text-muted); width: 42%; }
 .detail-table td.value { font-weight: 500; word-break: break-word; font-variant-numeric: tabular-nums; }
 
-/* Badge: differenziati da peso/bordo, non dal colore */
-.badge { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; background: var(--fill-strong); color: var(--text); border: 1px solid var(--stroke-strong); }
-.badge-success { background: var(--fill-subtle); }
-.badge-cyan, .badge-purple { background: var(--fill-subtle); }
-.badge-warning { background: transparent; border-style: dashed; }
-.badge-danger { background: var(--text); color: var(--bg); border-color: var(--text); }
+/* Semantic status pills retain text contrast in both color schemes. */
+.badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--fill-subtle); color: var(--text); border: 1px solid var(--stroke-strong); }
+.badge-success { background: rgba(79, 133, 101, .12); border-color: rgba(79, 133, 101, .4); }
+.badge-cyan, .badge-purple { background: rgba(96, 131, 157, .12); border-color: rgba(96, 131, 157, .4); }
+.badge-warning { background: rgba(166, 130, 65, .12); border-color: rgba(166, 130, 65, .4); }
+.badge-danger { background: rgba(171, 99, 105, .12); border-color: rgba(171, 99, 105, .4); }
+code, pre, .metric-value, td:last-child { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 .progress-bar-bg { height: 6px; background: var(--fill-strong); border-radius: 3px; overflow: hidden; margin-top: 6px; }
 .progress-bar-fill { height: 100%; background: var(--accent) !important; border-radius: 3px; }
 
-pre.json-view { background: var(--fill-subtle); border: 1px solid var(--stroke); border-radius: 8px; padding: 14px; overflow: auto; max-height: 560px; font: 12px/1.5 ui-monospace, "Cascadia Mono", Menlo, monospace; }
+pre.json-view { background: var(--fill-subtle); border: 1px solid var(--stroke); border-radius: 8px; padding: 14px; overflow: auto; max-height: 560px; font: 12px/1.5 var(--font-mono); }
 a { color: var(--text); }
 .hint { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
 

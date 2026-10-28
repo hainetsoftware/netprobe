@@ -270,23 +270,27 @@ VerticalScroll, .pane-scroll {
 }
 
 .badge-green {
-    background: $success-darken-1;
-    color: #ffffff;
+    background: rgba(79, 133, 101, 0.12);
+    border: round rgba(79, 133, 101, 0.4);
+    color: $text;
 }
 
 .badge-amber {
-    background: $warning-darken-1;
-    color: #ffffff;
+    background: rgba(166, 130, 65, 0.12);
+    border: round rgba(166, 130, 65, 0.4);
+    color: $text;
 }
 
 .badge-red {
-    background: $error-darken-1;
-    color: #ffffff;
+    background: rgba(171, 99, 105, 0.12);
+    border: round rgba(171, 99, 105, 0.4);
+    color: $text;
 }
 
 .badge-blue {
-    background: $secondary;
-    color: #ffffff;
+    background: rgba(96, 131, 157, 0.12);
+    border: round rgba(96, 131, 157, 0.4);
+    color: $text;
 }
 
 DataTable {

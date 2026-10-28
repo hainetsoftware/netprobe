@@ -243,7 +243,7 @@ def start_gui_server(initial_scan_quick: bool = False, open_browser: bool = True
     server = ThreadingHTTPServer(("127.0.0.1", actual_port), NetProbeHTTPRequestHandler)
     
     url = f"http://127.0.0.1:{actual_port}"
-    print(f"\n⚡ Server Web GUI avviato con successo su: \033[1;36m{url}\033[0m")
+    print(f"\n[OK] Server Web GUI avviato con successo su: \033[1;36m{url}\033[0m")
     
     # Pre-riscalda la cache in background
     NetProbeDataCache.get_instance().start_scan(quick_scan=True)

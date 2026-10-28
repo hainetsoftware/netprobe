@@ -9,6 +9,7 @@ import subprocess
 import shutil
 import platform
 from typing import Optional, List, Tuple
+from core.system_info import get_pretty_os_info
 
 def get_os_type() -> str:
     """Restituisce 'macos', 'windows', o 'linux'."""
@@ -102,6 +103,7 @@ def get_system_summary() -> dict:
     """Restituisce informazioni sommarie sull'host locale."""
     return {
         "os": platform.system(),
+        "pretty_os": get_pretty_os_info(),
         "os_release": platform.release(),
         "os_version": platform.version(),
         "machine": platform.machine(),

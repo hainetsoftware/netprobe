@@ -7,6 +7,7 @@ e riepiloghi visuali delle stime di rete.
 import sys
 import os
 from typing import Dict, Any, List
+from core.system_info import format_system_header
 
 # Assicura encoding UTF-8 per console multipiattaforma (Windows cp1252 / CI fix)
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -50,19 +51,14 @@ class TerminalUI:
 
     def print_banner(self, system_info: Dict[str, Any]):
         """Stampa il banner di benvenuto dell'applicazione."""
-        print(f"\n{self.BRIGHT_CYAN}{self.BOLD}╔══════════════════════════════════════════════════════════════════════════════╗{self.RESET}")
-        print(f"{self.BRIGHT_CYAN}{self.BOLD}║                          ⚡  NETPROBE PRO  ⚡                                ║{self.RESET}")
-        print(f"{self.BRIGHT_CYAN}{self.BOLD}║           Advanced LAN & Internet Intelligence and Estimation Suite          ║{self.RESET}")
-        print(f"{self.BRIGHT_CYAN}{self.BOLD}╚══════════════════════════════════════════════════════════════════════════════╝{self.RESET}")
-        
-        os_str = f"{system_info.get('os')} {system_info.get('os_release')} ({system_info.get('machine')})"
-        host = system_info.get("hostname", "localhost")
-        py_v = system_info.get("python_version", "")
+        print(f"\n{self.BOLD}NETPROBE PRO{self.RESET}")
+        print(f"{self.DIM}Advanced LAN & Internet Intelligence and Estimation Suite{self.RESET}")
+        print(f"{self.DIM}{'─' * 78}{self.RESET}")
         root_badge = f"{self.BRIGHT_RED}[ELEVATED/ROOT]{self.RESET}" if system_info.get("is_root") else f"{self.DIM}[USER MODE]{self.RESET}"
         
-        print(f"{self.DIM}Host:{self.RESET} {self.WHITE}{host}{self.RESET}  |  {self.DIM}OS:{self.RESET} {self.CYAN}{os_str}{self.RESET}  |  {self.DIM}Python:{self.RESET} {py_v}  {root_badge}\n")
+        print(f"{format_system_header(system_info)}  {root_badge}\n")
 
-    def print_section_header(self, title: str, icon: str = "▶"):
+    def print_section_header(self, title: str, icon: str = "›"):
         """Stampa l'intestazione di una sezione."""
         print(f"{self.BRIGHT_YELLOW}{self.BOLD}{icon}  {title.upper()}{self.RESET}")
         print(f"{self.DIM}{'─' * 78}{self.RESET}")
@@ -84,15 +80,18 @@ class TerminalUI:
         wan = full_data.get("wan", {})
         perf = full_data.get("performance", {})
         est = full_data.get("estimations", {})
+        self.print_section_header("Sistema & Interfaccia Attiva")
+        print(format_system_header(full_data.get('system') or {}, lan))
+        print()
 
         # ==========================================
         # 1. INTERFACCIA PRIMARIA & HARDWARE LAN
         # ==========================================
-        self.print_section_header("1. Scheda di Rete & Configurazione LAN", "💻")
+        self.print_section_header("1. Scheda di Rete & Configurazione LAN", "›")
         p_iface = lan.get("primary_interface") or {}
-        p_name = lan.get("primary_interface_name", "N/A")
+        p_name = p_iface.get("name") or lan.get("primary_interface_name") or "N/D"
         
-        self.print_kv("Interfaccia Attiva", f"{p_name} ({p_iface.get('type', 'N/A')})", highlight=True)
+        self.print_kv("Interfaccia Attiva", f"{p_name} ({lan.get('interface_type') or p_iface.get('type') or 'N/D'})", highlight=True)
         self.print_kv("Indirizzo Fisico (MAC)", p_iface.get("mac"))
         self.print_kv("Produttore Hardware (OUI)", p_iface.get("vendor"))
         self.print_kv("Indirizzo IPv4 Locale", p_iface.get("ipv4"), highlight=True)
@@ -177,7 +176,7 @@ class TerminalUI:
         # ==========================================
         # 2. GATEWAY, DHCP & DNS
         # ==========================================
-        self.print_section_header("2. Gateway, DHCP & Risoluzione DNS", "🌐")
+        self.print_section_header("2. Gateway, DHCP & Risoluzione DNS", "›")
         gw = lan.get("gateway", {})
         self.print_kv("Default Gateway (Router)", gw.get("ipv4"), highlight=True)
         self.print_kv("MAC Address Router", gw.get("mac"))
@@ -220,7 +219,7 @@ class TerminalUI:
         # ==========================================
         # 3. INTERNET & INTELLIGENCE WAN
         # ==========================================
-        self.print_section_header("3. Connessione Internet & Geointelligence WAN", "🌍")
+        self.print_section_header("3. Connessione Internet & Geointelligence WAN", "›")
         self.print_kv("Indirizzo IPv4 Pubblico", wan.get("public_ipv4"), highlight=True)
         ipv6_pub = wan.get("public_ipv6")
         ipv6_status = f"{ipv6_pub} {self.BRIGHT_GREEN}(Dual-Stack OK){self.RESET}" if ipv6_pub else f"{self.DIM}Non Rilevato (IPv4-Only){self.RESET}"
@@ -266,7 +265,7 @@ class TerminalUI:
         # ==========================================
         # 4. ARCHITETTURA NAT & FIREWALL (STUN RFC 5389)
         # ==========================================
-        self.print_section_header("4. Analisi NAT & Sicurezza Router (STUN RFC 5389)", "🛡️")
+        self.print_section_header("4. Analisi NAT & Sicurezza Router (STUN RFC 5389)", "›")
         nat = wan.get("nat", {})
         self.print_kv("Tipologia NAT Mappata", nat.get("nat_type"), highlight=True)
         self.print_kv("Comportamento Mappatura", nat.get("mapping_behavior"))
@@ -302,7 +301,7 @@ class TerminalUI:
         # ==========================================
         # 5. PERFORMANCE, BUFFERBLOAT & VELOCITÀ
         # ==========================================
-        self.print_section_header("5. Performance, Latenza, Bufferbloat & Banda", "🚀")
+        self.print_section_header("5. Performance, Latenza, Bufferbloat & Banda", "›")
         targets = perf.get("latency_targets", {})
         
         # Tabella Latenza
@@ -405,7 +404,7 @@ class TerminalUI:
 
         if speed.get("tool_ceiling_mbps") is not None:
             ceil_mbps = speed["tool_ceiling_mbps"]
-            ceil_warn = f" {self.YELLOW}⚠️ (>50% ceiling interprete){self.RESET}" if speed.get("ceiling_warning") else ""
+            ceil_warn = f" {self.YELLOW}[WARN] (>50% ceiling interprete){self.RESET}" if speed.get("ceiling_warning") else ""
             self.print_kv("Calibrazione Limite Tool (Loopback)", f"{ceil_mbps} Mbps{ceil_warn}")
         if speed.get("servers_used"):
             agree_str = " (concordanti)" if speed.get("endpoints_agreement") is True else (" (discordanti)" if speed.get("endpoints_agreement") is False else "")
@@ -419,7 +418,7 @@ class TerminalUI:
         # ==========================================
         # 6. STIME AVANZATE, MODELLI FISICI & ITU-T G.107
         # ==========================================
-        self.print_section_header("6. Modelli Matematici, Stime Fisiche & Score Qualità", "🔬")
+        self.print_section_header("6. Modelli Matematici, Stime Fisiche & Score Qualità", "›")
         
         # Mezzo Fisico Ultimo Miglio
         med = est.get("physical_medium", {})
@@ -436,7 +435,7 @@ class TerminalUI:
             self.print_kv("Non Attribuito", f"{unassigned}%")
         mq = med.get("measurement_quality") or est.get("measurement_quality") or {}
         if mq.get("noisy"):
-            print(f"  {self.YELLOW}⚠️  Misura disturbata: possibile traffico concorrente sulla linea (streaming, backup). Ripetere a linea libera per una stima più affidabile.{self.RESET}")
+            print(f"  {self.YELLOW}[WARN]  Misura disturbata: possibile traffico concorrente sulla linea (streaming, backup). Ripetere a linea libera per una stima più affidabile.{self.RESET}")
         bng = med.get("bng_hop", {})
         if bng and bng.get("ip"):
             cgnat_tag = " [CGNAT RFC 6598]" if bng.get("cgnat_hop") else ""
@@ -593,7 +592,7 @@ class TerminalUI:
         # Dispositivi rilevati
         perm_warn = lan.get("permissions_warning")
         if perm_warn:
-            print(f"  {self.YELLOW}⚠️  {perm_warn}{self.RESET}\n")
+            print(f"  {self.YELLOW}[WARN]  {perm_warn}{self.RESET}\n")
 
         this_dev = lan.get("this_device")
         if this_dev:

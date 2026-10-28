@@ -53,16 +53,16 @@ TAB_IDS: List[str] = [
 CUSTOM_THEMES: List[Theme] = [
     Theme(
         name="netprobe-dark",
-        primary="#38bdf8",
-        secondary="#2563eb",
-        accent="#38bdf8",
+        primary="#9bb8ce",
+        secondary="#718ba3",
+        accent="#9bb8ce",
         foreground="#f1f5f9",
         background="#0b0f17",
         surface="#131b26",
         panel="#202d3d",
-        success="#4ade80",
-        warning="#facc15",
-        error="#f87171",
+        success="#9bbda7",
+        warning="#d0ba8c",
+        error="#d3a0a5",
         dark=True,
     ),
     Theme(
@@ -109,7 +109,7 @@ THEME_CYCLE: List[Tuple[str, str, str]] = [
 class NetProbeTUIApp(App):
     """Applicazione TUI moderna Textual per NetProbe Pro."""
 
-    TITLE = "⚡ NETPROBE PRO"
+    TITLE = "NETPROBE PRO"
     SUB_TITLE = "Advanced LAN & Internet Intelligence and Estimation Suite"
     CSS_PATH = "style.tcss"
 
@@ -161,31 +161,31 @@ class NetProbeTUIApp(App):
         yield Header(show_clock=True)
         with Container(id="hero-bar"):
             with Horizontal(id="action-buttons"):
-                yield Button("▶ Completa", id="btn-full")
-                yield Button("⚡ Rapida", id="btn-quick")
-                yield Button("💾 Export", id="btn-export")
-                yield Button("🎨 Tema (T)", id="btn-theme")
+                yield Button("Completa", id="btn-full")
+                yield Button("Rapida", id="btn-quick")
+                yield Button("Export", id="btn-export")
+                yield Button("Tema (T)", id="btn-theme")
             with Vertical(id="status-container"):
-                yield Label("Pronto. Seleziona un'azione per iniziare.", id="status-label")
+                yield Label("Pronto. Seleziona un'azione per iniziare.", id="status-label", markup=False)
                 yield ProgressBar(id="progress-bar", total=100, show_eta=False)
         with TabbedContent(id="tabs"):
-            with TabPane("📊 Sintesi", id="tab-dashboard"):
+            with TabPane("› Sintesi", id="tab-dashboard"):
                 yield DashboardView(id="view-dashboard")
-            with TabPane("📶 Wi-Fi Wireless", id="tab-wifi"):
+            with TabPane("› Wi-Fi Wireless", id="tab-wifi"):
                 yield WifiView(id="view-wifi")
-            with TabPane("🔌 Ethernet & Switch", id="tab-ethernet"):
+            with TabPane("› Ethernet & Switch", id="tab-ethernet"):
                 yield EthernetView(id="view-ethernet")
-            with TabPane("💻 LAN & Rete Locale", id="tab-lan"):
+            with TabPane("› LAN & Rete Locale", id="tab-lan"):
                 yield LanView(id="view-lan")
-            with TabPane("🌐 WAN & Sicurezza", id="tab-wan"):
+            with TabPane("› WAN & Sicurezza", id="tab-wan"):
                 yield WanView(id="view-wan")
-            with TabPane("🚀 Performance & Banda", id="tab-performance"):
+            with TabPane("› Performance & Banda", id="tab-performance"):
                 yield PerformanceView(id="view-performance")
-            with TabPane("🔬 Mezzo Fisico & Salti", id="tab-medium"):
+            with TabPane("› Mezzo Fisico & Salti", id="tab-medium"):
                 yield MediumView(id="view-medium")
-            with TabPane("🌍 IXP & Routing Ottico", id="tab-ixp"):
+            with TabPane("› IXP & Routing Ottico", id="tab-ixp"):
                 yield IxpView(id="view-ixp")
-            with TabPane("📱 Dispositivi LAN", id="tab-devices"):
+            with TabPane("› Dispositivi LAN", id="tab-devices"):
                 yield DevicesView(id="view-devices")
         yield Footer()
 
@@ -214,7 +214,7 @@ class NetProbeTUIApp(App):
         theme_id, theme_cls, theme_label = THEME_CYCLE[self._theme_index]
         self.theme = theme_id
         try:
-            self.query_one("#status-label", Label).update(f"🎨 Tema grafico attivo: {theme_label}")
+            self.query_one("#status-label", Label).update(f"› Tema grafico attivo: {theme_label}")
         except Exception:
             pass
 
@@ -464,7 +464,7 @@ class NetProbeTUIApp(App):
         self.query_one("#btn-full", Button).disabled = False
         self.query_one("#btn-quick", Button).disabled = False
         self.query_one("#status-label", Label).update(
-            f"[✓ COMPLETATO] Scansione completata in {self._format_duration(elapsed)}"
+            f"[OK] COMPLETATO — Scansione completata in {self._format_duration(elapsed)}"
         )
         self.query_one("#progress-bar", ProgressBar).update(progress=100)
         self.notify("Scansione completata con successo!", title="NetProbe Pro", severity="information")
@@ -474,7 +474,7 @@ class NetProbeTUIApp(App):
         self.is_scanning = False
         self.query_one("#btn-full", Button).disabled = False
         self.query_one("#btn-quick", Button).disabled = False
-        self.query_one("#status-label", Label).update(f"❌ Errore durante la scansione: {err_msg}")
+        self.query_one("#status-label", Label).update(f"[FAIL] Errore durante la scansione: {err_msg}")
         self.notify(f"Errore scansione: {err_msg}", title="NetProbe Pro", severity="error")
 
     def on_unmount(self) -> None:

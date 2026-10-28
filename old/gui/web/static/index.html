@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NetProbe Pro - LAN & Internet Intelligence Dashboard</title>
   <link rel="stylesheet" href="/static/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>›</text></svg>">
 </head>
 <body>
 
@@ -13,7 +13,7 @@
   <header>
     <div class="container header-content">
       <div class="logo-group">
-        <div class="logo-icon">⚡</div>
+        <div class="logo-icon">›</div>
         <div class="logo-text">
           <h1>NetProbe Pro</h1>
           <p>LAN & Internet Intelligence Suite</p>
@@ -21,16 +21,16 @@
       </div>
       <div class="action-buttons">
         <button id="btn-quick-scan">
-          <span>⚡</span> Scansione rapida
+          <span>›</span> Scansione rapida
         </button>
         <button id="btn-full-scan" class="btn-primary">
-          <span>▶</span> Avvia test completo
+          <span>›</span> Avvia test completo
         </button>
         <button id="btn-export-json">
-          <span>💾</span> Esporta JSON
+          <span>›</span> Esporta JSON
         </button>
         <button id="btn-print" onclick="window.print()">
-          <span>🖨️</span> PDF
+          <span>›</span> PDF
         </button>
       </div>
     </div>
@@ -68,7 +68,7 @@
       <div class="metric-card">
         <div class="metric-header">
           <span>Download Throughput</span>
-          <span>📥</span>
+          <span>›</span>
         </div>
         <div class="metric-value">
           <span id="metric-download">--</span>
@@ -80,7 +80,7 @@
       <div class="metric-card">
         <div class="metric-header">
           <span>Upload Stimato</span>
-          <span>📤</span>
+          <span>›</span>
         </div>
         <div class="metric-value">
           <span id="metric-upload">--</span>
@@ -92,7 +92,7 @@
       <div class="metric-card">
         <div class="metric-header">
           <span>Latenza Minima</span>
-          <span>⏱️</span>
+          <span>›</span>
         </div>
         <div class="metric-value">
           <span id="metric-ping">--</span>
@@ -104,7 +104,7 @@
       <div class="metric-card">
         <div class="metric-header">
           <span>Grado Bufferbloat</span>
-          <span>🚦</span>
+          <span>›</span>
         </div>
         <div class="metric-value">
           <span id="metric-bufferbloat">--</span>
@@ -115,7 +115,7 @@
       <div class="metric-card">
         <div class="metric-header">
           <span>Score Vocale ITU-T G.107</span>
-          <span>📞</span>
+          <span>›</span>
         </div>
         <div class="metric-value">
           <span id="metric-mos">--</span>
@@ -127,7 +127,7 @@
       <div class="metric-card">
         <div class="metric-header">
           <span>Mezzo Fisico Stimato</span>
-          <span>🔬</span>
+          <span>›</span>
         </div>
         <div class="metric-value" style="font-size: 20px;">
           <span id="metric-medium">--</span>
@@ -139,38 +139,38 @@
     <!-- Network Topology Chain Visualizer -->
     <div class="topology-section">
       <div class="section-title">
-        <span>🌐 Topologia di Collegamento Rilevata</span>
+        <span>› Topologia di Collegamento Rilevata</span>
       </div>
       <div class="topology-chain">
         <div class="topo-node" id="node-host">
-          <div class="topo-node-icon">💻</div>
+          <div class="topo-node-icon">›</div>
           <div class="topo-node-name" id="topo-host-name">Host Locale</div>
           <div class="topo-node-ip" id="topo-host-ip">0.0.0.0</div>
           <div class="topo-node-meta" id="topo-host-meta">Interfaccia</div>
         </div>
 
-        <div class="topo-arrow">➜</div>
+        <div class="topo-arrow">›</div>
 
         <div class="topo-node" id="node-gateway">
-          <div class="topo-node-icon">📡</div>
+          <div class="topo-node-icon">›</div>
           <div class="topo-node-name" id="topo-gw-name">Default Gateway</div>
           <div class="topo-node-ip" id="topo-gw-ip">0.0.0.0</div>
           <div class="topo-node-meta" id="topo-gw-meta">Router LAN</div>
         </div>
 
-        <div class="topo-arrow">➜</div>
+        <div class="topo-arrow">›</div>
 
         <div class="topo-node" id="node-isp">
-          <div class="topo-node-icon">🏢</div>
+          <div class="topo-node-icon">›</div>
           <div class="topo-node-name" id="topo-isp-name">Provider ISP</div>
           <div class="topo-node-ip" id="topo-isp-ip">IP Pubblico</div>
           <div class="topo-node-meta" id="topo-isp-meta">ASN</div>
         </div>
 
-        <div class="topo-arrow">➜</div>
+        <div class="topo-arrow">›</div>
 
         <div class="topo-node" id="node-internet">
-          <div class="topo-node-icon">🌍</div>
+          <div class="topo-node-icon">›</div>
           <div class="topo-node-name" id="topo-edge-name">Hub IXP / Internet</div>
           <div class="topo-node-ip" id="topo-edge-city">Anycast Core</div>
           <div class="topo-node-meta" id="topo-edge-meta">Efficienza Ottica</div>
@@ -180,20 +180,20 @@
 
     <!-- Tabbed Panels Navigation -->
     <div class="tabs-nav">
-      <button class="tab-btn active" data-tab="tab-lan">💻 Scheda & Rete LAN</button>
-      <button class="tab-btn" data-tab="tab-wan">🌍 Internet & Geointelligence</button>
-      <button class="tab-btn" data-tab="tab-nat">🛡️ NAT, Firewall & Routing</button>
-      <button class="tab-btn" data-tab="tab-perf">🚀 Performance & Bufferbloat</button>
-      <button class="tab-btn" data-tab="tab-models">🔬 Modelli Fisici & Stime ITU-T</button>
-      <button class="tab-btn" data-tab="tab-devices">👥 Dispositivi LAN</button>
-      <button class="tab-btn" data-tab="tab-json">📋 Raw JSON</button>
+      <button class="tab-btn active" data-tab="tab-lan">› Scheda & Rete LAN</button>
+      <button class="tab-btn" data-tab="tab-wan">› Internet & Geointelligence</button>
+      <button class="tab-btn" data-tab="tab-nat">› NAT, Firewall & Routing</button>
+      <button class="tab-btn" data-tab="tab-perf">› Performance & Bufferbloat</button>
+      <button class="tab-btn" data-tab="tab-models">› Modelli Fisici & Stime ITU-T</button>
+      <button class="tab-btn" data-tab="tab-devices">› Dispositivi LAN</button>
+      <button class="tab-btn" data-tab="tab-json">› Raw JSON</button>
     </div>
 
     <!-- Tab 1: LAN & Hardware -->
     <div id="tab-lan" class="tab-panel active">
       <div class="cards-grid-2">
         <div class="panel-card">
-          <h3><span>🔌</span> Configurazione Interfaccia Primaria</h3>
+          <h3><span>›</span> Configurazione Interfaccia Primaria</h3>
           <table class="detail-table">
             <tr><td class="label">Nome Interfaccia</td><td class="value" id="lan-iface-name">--</td></tr>
             <tr><td class="label">Tipologia</td><td class="value" id="lan-iface-type">--</td></tr>
@@ -208,7 +208,7 @@
         </div>
 
         <div class="panel-card">
-          <h3><span>📶</span> Parametri Fisici Link (Wi-Fi / Ethernet)</h3>
+          <h3><span>›</span> Parametri Fisici Link (Wi-Fi / Ethernet)</h3>
           <table class="detail-table" id="table-link-params">
             <!-- Popolato dinamicamente da app.js -->
           </table>
@@ -220,7 +220,7 @@
     <div id="tab-wan" class="tab-panel">
       <div class="cards-grid-2">
         <div class="panel-card">
-          <h3><span>🌐</span> Identità Rete Pubblica & ISP</h3>
+          <h3><span>›</span> Identità Rete Pubblica & ISP</h3>
           <table class="detail-table">
             <tr><td class="label">Indirizzo IPv4 Pubblico</td><td class="value" id="wan-ipv4">--</td></tr>
             <tr><td class="label">Indirizzo IPv6 Pubblico</td><td class="value" id="wan-ipv6">--</td></tr>
@@ -234,7 +234,7 @@
         </div>
 
         <div class="panel-card">
-          <h3><span>📍</span> Geolocalizzazione IP & Fuso Orario</h3>
+          <h3><span>›</span> Geolocalizzazione IP & Fuso Orario</h3>
           <table class="detail-table">
             <tr><td class="label">Città</td><td class="value" id="wan-city">--</td></tr>
             <tr><td class="label">Regione / Provincia</td><td class="value" id="wan-region">--</td></tr>
@@ -246,7 +246,7 @@
         </div>
 
         <div class="panel-card" style="grid-column: 1 / -1;">
-          <h3><span>⚡</span> Internet eXchange (IXP) & Architettura di Peering</h3>
+          <h3><span>›</span> Internet eXchange (IXP) & Architettura di Peering</h3>
           <table class="detail-table">
             <tr><td class="label">Punto di Interscambio / IXP</td><td class="value" id="wan-ixp-name">--</td></tr>
             <tr><td class="label">Campus / Struttura Datacenter</td><td class="value" id="wan-ixp-facility">--</td></tr>
@@ -264,7 +264,7 @@
     <div id="tab-nat" class="tab-panel">
       <div class="cards-grid-2">
         <div class="panel-card">
-          <h3><span>🛡️</span> Analisi Mappatura NAT (STUN RFC 5389)</h3>
+          <h3><span>›</span> Analisi Mappatura NAT (STUN RFC 5389)</h3>
           <table class="detail-table">
             <tr><td class="label">Tipologia NAT</td><td class="value" id="nat-type">--</td></tr>
             <tr><td class="label">Comportamento Mapping</td><td class="value" id="nat-behavior">--</td></tr>
@@ -277,7 +277,7 @@
         </div>
 
         <div class="panel-card">
-          <h3><span>📡</span> Gateway, DHCP & DNS</h3>
+          <h3><span>›</span> Gateway, DHCP & DNS</h3>
           <table class="detail-table">
             <tr><td class="label">Default Gateway (Router)</td><td class="value" id="gw-ip">--</td></tr>
             <tr><td class="label">Produttore Router</td><td class="value" id="gw-vendor">--</td></tr>
@@ -296,7 +296,7 @@
     <!-- Tab 4: Performance & Bufferbloat -->
     <div id="tab-perf" class="tab-panel">
       <div class="panel-card" style="margin-bottom: 20px;">
-        <h3><span>🎯</span> Tabella Multi-Target Latenza, Jitter & Packet Loss</h3>
+        <h3><span>›</span> Tabella Multi-Target Latenza, Jitter & Packet Loss</h3>
         <table class="detail-table" style="margin-top: 10px;">
           <thead>
             <tr style="text-align: left; color: var(--text-muted); font-size: 11px;">
@@ -316,7 +316,7 @@
 
       <div class="cards-grid-2">
         <div class="panel-card">
-          <h3><span>🚦</span> Valutazione Bufferbloat Bidirezionale</h3>
+          <h3><span>›</span> Valutazione Bufferbloat Bidirezionale</h3>
           <table class="detail-table">
             <tr><td class="label">Valutazione Grado</td><td class="value" id="bb-grade">--</td></tr>
             <tr><td class="label">Latenza Idle (Riposo)</td><td class="value" id="bb-idle">--</td></tr>
@@ -328,7 +328,7 @@
         </div>
 
         <div class="panel-card">
-          <h3><span>⚡</span> Dettagli Velocità a Streaming Continuo</h3>
+          <h3><span>›</span> Dettagli Velocità a Streaming Continuo</h3>
           <table class="detail-table">
             <tr><td class="label">Download Sostenuto</td><td class="value" id="speed-down">--</td></tr>
             <tr><td class="label">Picco Download & Stabilità</td><td class="value" id="speed-down-meta">--</td></tr>
@@ -345,7 +345,7 @@
     <div id="tab-models" class="tab-panel">
       <div class="cards-grid-2">
         <div class="panel-card">
-          <h3><span>🔬</span> Modello Mezzo Fisico Ultimo Miglio</h3>
+          <h3><span>›</span> Modello Mezzo Fisico Ultimo Miglio</h3>
           <table class="detail-table">
             <tr><td class="label">Tecnologia Prevista</td><td class="value" id="model-medium-name">--</td></tr>
             <tr><td class="label">Grado di Confidenza</td><td class="value" id="model-medium-conf">--</td></tr>
@@ -361,7 +361,7 @@
         </div>
 
         <div class="panel-card">
-          <h3><span>💡</span> Efficienza di Routing Ottico & Fisico</h3>
+          <h3><span>›</span> Efficienza di Routing Ottico & Fisico</h3>
           <table class="detail-table">
             <tr><td class="label">IXP di Uscita Rilevato</td><td class="value" id="opt-ixp">--</td></tr>
             <tr><td class="label">Campus / Datacenter IXP</td><td class="value" id="opt-facility">--</td></tr>
@@ -375,7 +375,7 @@
         </div>
 
         <div class="panel-card" style="grid-column: 1 / -1;">
-          <h3><span>📍</span> Profilo Latenza per Salto (Access Profile) <small style="font-size: 11px; color: var(--text-muted); font-weight: normal;">(Sperimentale / Non calibrato)</small></h3>
+          <h3><span>›</span> Profilo Latenza per Salto (Access Profile) <small style="font-size: 11px; color: var(--text-muted); font-weight: normal;">(Sperimentale / Non calibrato)</small></h3>
           <p style="font-size: 12px; color: var(--text-dim); margin-bottom: 12px;">
             Decomposizione additiva dei pavimenti di latenza lungo i salti di rete dal gateway LAN fino ai transiti/peering.
           </p>
@@ -398,7 +398,7 @@
         </div>
 
         <div class="panel-card">
-          <h3><span>📦</span> Bandwidth-Delay Product (BDP)</h3>
+          <h3><span>›</span> Bandwidth-Delay Product (BDP)</h3>
           <table class="detail-table">
             <tr><td class="label">Capacità Canale (BDP)</td><td class="value" id="bdp-val">--</td></tr>
             <tr><td class="label">Finestra TCP Ottimale</td><td class="value" id="bdp-tcp">--</td></tr>
@@ -407,7 +407,7 @@
         </div>
 
         <div class="panel-card">
-          <h3><span>🎮</span> Rating Idoneità Applicativa (ITU-T E-model)</h3>
+          <h3><span>›</span> Rating Idoneità Applicativa (ITU-T E-model)</h3>
           <div id="app-suitability-container" style="margin-top: 10px;">
             <!-- Popolato dinamicamente da app.js con barre di progresso -->
           </div>
@@ -418,7 +418,7 @@
     <!-- Tab 6: Dispositivi LAN -->
     <div id="tab-devices" class="tab-panel">
       <div class="panel-card">
-        <h3><span>👥</span> Dispositivi Rilevati nella Rete Locale</h3>
+        <h3><span>›</span> Dispositivi Rilevati nella Rete Locale</h3>
         <p style="font-size: 12px; color: var(--text-dim); margin-bottom: 14px;">
           Dispositivi estratti dalla tabella ARP di sistema e dallo sweep socket della subnet locale.
         </p>
@@ -443,7 +443,7 @@
     <div id="tab-json" class="tab-panel">
       <div class="panel-card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <h3><span>📋</span> Risultato Diagnostico Completo in Formato JSON</h3>
+          <h3><span>›</span> Risultato Diagnostico Completo in Formato JSON</h3>
           <button id="btn-copy-json">Copia JSON</button>
         </div>
         <pre class="json-view" id="raw-json-output">In attesa di dati...</pre>

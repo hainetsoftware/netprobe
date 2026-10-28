@@ -10,6 +10,7 @@ Genera le righe testuali formattate con attributi per ogni scheda:
 
 import json
 from typing import Dict, Any, List, Tuple, Optional
+from core.system_info import format_system_header
 
 
 def get_tab_names() -> List[str]:
@@ -23,7 +24,7 @@ def get_tab_names() -> List[str]:
     ]
 
 
-def _format_section_header(title: str, icon: str = "▶") -> List[Tuple[str, str]]:
+def _format_section_header(title: str, icon: str = "›") -> List[Tuple[str, str]]:
     """Restituisce l'intestazione formattata di una sezione."""
     return [
         (f" {icon}  {title.upper()}", "bold_yellow"),
@@ -73,12 +74,16 @@ def format_overview(data: Dict[str, Any]) -> List[Tuple[str, str]]:
     est = data.get("estimations", {})
 
     p_iface = lan.get("primary_interface") or {}
-    p_name = lan.get("primary_interface_name") or p_iface.get("name") or "N/D"
+    p_name = p_iface.get("name") or lan.get("primary_interface_name") or "N/D"
     gw = lan.get("gateway") or {}
     phys = est.get("physical_medium") or {}
     bb = perf.get("bufferbloat") or {}
     speed = perf.get("speed") or {}
     lat_targets = perf.get("latency_targets") or perf.get("latency") or {}
+
+    lines.extend(_format_section_header("Sistema & Interfaccia Attiva"))
+    lines.append((format_system_header(data.get('system') or {}, lan), "normal"))
+    lines.append(("", "normal"))
 
     # --- TOPOLOGIA DI RETE ---
     lines.append(("═" * 78, "cyan"))
@@ -144,8 +149,8 @@ def format_overview(data: Dict[str, Any]) -> List[Tuple[str, str]]:
     lines.append(("", "normal"))
 
     # --- 1. SCHEDA DI RETE & CONFIGURAZIONE LAN ---
-    lines.extend(_format_section_header("1. Scheda di Rete & Configurazione LAN", "💻"))
-    lines.append(_format_kv("Interfaccia Attiva", f"{p_name} ({p_iface.get('type', 'N/A')})", highlight=True))
+    lines.extend(_format_section_header("1. Scheda di Rete & Configurazione LAN", "›"))
+    lines.append(_format_kv("Interfaccia Attiva", f"{p_name} ({lan.get('interface_type') or p_iface.get('type') or 'N/D'})", highlight=True))
     lines.append(_format_kv("Indirizzo Fisico (MAC)", p_iface.get("mac")))
     lines.append(_format_kv("Produttore Hardware (OUI)", p_iface.get("vendor")))
     lines.append(_format_kv("Indirizzo IPv4 Locale", p_iface.get("ipv4"), highlight=True))
@@ -226,7 +231,7 @@ def format_overview(data: Dict[str, Any]) -> List[Tuple[str, str]]:
     lines.append(("", "normal"))
 
     # --- 2. GATEWAY, DHCP & RISOLUZIONE DNS ---
-    lines.extend(_format_section_header("2. Gateway, DHCP & Risoluzione DNS", "🌐"))
+    lines.extend(_format_section_header("2. Gateway, DHCP & Risoluzione DNS", "›"))
     lines.append(_format_kv("Default Gateway (Router)", gw.get("ipv4"), highlight=True))
     lines.append(_format_kv("MAC Address Router", gw.get("mac")))
     lines.append(_format_kv("Produttore Router (OUI)", gw.get("vendor")))
@@ -257,7 +262,7 @@ def format_overview(data: Dict[str, Any]) -> List[Tuple[str, str]]:
     lines.append(("", "normal"))
 
     # --- 3. CONNESSIONE INTERNET & GEOINTELLIGENCE WAN ---
-    lines.extend(_format_section_header("3. Connessione Internet & Geointelligence WAN", "🌍"))
+    lines.extend(_format_section_header("3. Connessione Internet & Geointelligence WAN", "›"))
     lines.append(_format_kv("Indirizzo IPv4 Pubblico", wan.get("public_ipv4"), highlight=True))
 
     ipv6_pub = wan.get("public_ipv6")
@@ -298,7 +303,7 @@ def format_overview(data: Dict[str, Any]) -> List[Tuple[str, str]]:
     lines.append(("", "normal"))
 
     # --- 4. ANALISI NAT & SICUREZZA ROUTER ---
-    lines.extend(_format_section_header("4. Analisi NAT & Sicurezza Router (STUN RFC 5389)", "🛡️"))
+    lines.extend(_format_section_header("4. Analisi NAT & Sicurezza Router (STUN RFC 5389)", "›"))
     nat = wan.get("nat", {})
     lines.append(_format_kv("Tipologia NAT Mappata", nat.get("nat_type"), highlight=True))
     lines.append(_format_kv("Comportamento Mappatura", nat.get("mapping_behavior")))
@@ -334,7 +339,7 @@ def format_overview(data: Dict[str, Any]) -> List[Tuple[str, str]]:
     # --- 5. DISPOSITIVI RILEVATI NELLA LAN ---
     perm_warn = lan.get("permissions_warning")
     if perm_warn:
-        lines.append((f"  ⚠️  {perm_warn}", "yellow"))
+        lines.append((f"  [WARN]  {perm_warn}", "yellow"))
         lines.append(("", "normal"))
 
     this_dev = lan.get("this_device")
@@ -411,7 +416,7 @@ def format_physical_medium(data: Dict[str, Any]) -> List[Tuple[str, str]]:
     if vetoes:
         lines.append((" Veto Deterministici Attivati:", "bold_red"))
         for v in vetoes:
-            lines.append((f"  ✗ {v}", "red"))
+            lines.append((f"  [FAIL] {v}", "red"))
         lines.append(("", "normal"))
 
     # Alternative
@@ -430,7 +435,7 @@ def format_physical_medium(data: Dict[str, Any]) -> List[Tuple[str, str]]:
 
     mq = phys.get("measurement_quality") or est.get("measurement_quality") or {}
     if mq.get("noisy"):
-        lines.append(("  ⚠️  Misura disturbata: possibile traffico concorrente sulla linea. Ripetere a linea libera.", "yellow"))
+        lines.append(("  [WARN]  Misura disturbata: possibile traffico concorrente sulla linea. Ripetere a linea libera.", "yellow"))
         lines.append(("", "normal"))
 
     # Evidenze con pesi applicati
@@ -824,7 +829,7 @@ def format_performance(data: Dict[str, Any]) -> List[Tuple[str, str]]:
     # Calibrazione e psutil
     if speed.get("tool_ceiling_mbps") is not None:
         ceil_mbps = speed["tool_ceiling_mbps"]
-        ceil_warn = " ⚠️ (>50% ceiling interprete)" if speed.get("ceiling_warning") else ""
+        ceil_warn = " [WARN] (>50% ceiling interprete)" if speed.get("ceiling_warning") else ""
         lines.append((f" • Limite Loopback Tool    : {ceil_mbps} Mbps{ceil_warn}", "dim"))
 
     if speed.get("servers_used"):
@@ -887,42 +892,42 @@ class DashboardView(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         with Container(id="dash-empty"):
-            yield Label("⚡  NETPROBE PRO - PRONTO", id="empty-state-title")
-            yield Label("Nessuna scansione presente. Premi [▶ Avvia Scansione Completa] (o tasto Spazio) per avviare l'analisi.", id="empty-state-subtitle")
+            yield Label("›  NETPROBE PRO - PRONTO", id="empty-state-title")
+            yield Label("Nessuna scansione presente. Premi [› Avvia Scansione Completa] (o tasto Spazio) per avviare l'analisi.", id="empty-state-subtitle")
 
         with Container(id="dash-content"):
             with Container(classes="card"):
-                yield Label("▶  SISTEMA & INTERFACCIA ATTIVA", classes="card-title")
-                yield Label("-", id="dash-sys-label")
+                yield Label("›  SISTEMA & INTERFACCIA ATTIVA", classes="card-title")
+                yield Label("-", id="dash-sys-label", markup=False)
 
             with Horizontal(classes="hero-metric-row"):
                 with Container(classes="hero-card"):
-                    yield Label("▶ MEZZO FISICO (Stima)", classes="card-title-emerald")
+                    yield Label("› MEZZO FISICO (Stima)", classes="card-title-emerald")
                     yield Label("-", id="dash-medium-title", classes="hero-value")
                     yield Label("-", id="dash-medium-conf")
                     yield Label("-", id="dash-medium-bng", classes="hero-subtitle")
 
                 with Container(classes="hero-card"):
-                    yield Label("▶ BANDA PASSANTE", classes="card-title")
+                    yield Label("› BANDA PASSANTE", classes="card-title")
                     yield Label("-", id="dash-speed-title", classes="hero-value-cyan")
                     yield Label("-", id="dash-speed-ul")
                     yield Label("-", id="dash-speed-server", classes="hero-subtitle")
 
                 with Container(classes="hero-card"):
-                    yield Label("▶ LATENZA & BUFFERBLOAT", classes="card-title-amber")
+                    yield Label("› LATENZA & BUFFERBLOAT", classes="card-title-amber")
                     yield Label("-", id="dash-bb-title", classes="hero-value")
                     yield Label("-", id="dash-bb-grade")
                     yield Label("-", id="dash-bb-deltas", classes="hero-subtitle")
 
             with Horizontal(classes="hero-metric-row"):
                 with Container(classes="hero-card"):
-                    yield Label("▶ INSTRADAMENTO & PEERING", classes="card-title")
+                    yield Label("› INSTRADAMENTO & PEERING", classes="card-title")
                     yield Label("-", id="dash-ixp-title", classes="hero-value")
                     yield Label("-", id="dash-ixp-eff")
                     yield Label("-", id="dash-ixp-route", classes="hero-subtitle")
 
                 with Container(classes="hero-card"):
-                    yield Label("▶ QUALITÀ VOCALE & APPLICAZIONI", classes="card-title-emerald")
+                    yield Label("› QUALITÀ VOCALE & APPLICAZIONI", classes="card-title-emerald")
                     yield Label("-", id="dash-voice-title", classes="hero-value")
                     yield Label("-", id="dash-app-gaming")
                     yield Label("-", id="dash-app-streaming", classes="hero-subtitle")
@@ -947,10 +952,7 @@ class DashboardView(VerticalScroll):
 
         sys_s = data.get("system") or {}
         lan = data.get("lan") or {}
-        p_if = lan.get("primary_interface") or {}
-        self.query_one("#dash-sys-label", Label).update(
-            f"Host: [b]{sys_s.get('hostname', '-')}[/b] | OS: {sys_s.get('os', '-')} ({sys_s.get('arch', '-')}) | Python {sys_s.get('python', '-')} | Interfaccia: [b]{p_if.get('name', '-')}[/b] ({p_if.get('type', '-')})"
-        )
+        self.query_one("#dash-sys-label", Label).update(format_system_header(sys_s, lan))
 
         est = data.get("estimations") or {}
         phys = est.get("physical_medium") or {}
@@ -1011,7 +1013,7 @@ class WifiView(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         with Container(classes="card"):
-            yield Label("▶  PARAMETRI RADIO WI-FI WIRELESS", classes="card-title")
+            yield Label("›  PARAMETRI RADIO WI-FI WIRELESS", classes="card-title")
             yield _make_kv("Stato Connessione Wi-Fi", val_id="wifi-status", val_class="kv-val-green")
             yield _make_kv("Interfaccia Wireless", val_id="wifi-iface")
             yield _make_kv("Nome Rete (SSID)", val_id="wifi-ssid", val_class="kv-val-cyan")
@@ -1023,7 +1025,7 @@ class WifiView(VerticalScroll):
             yield _make_kv("Canale & Ampiezza Spettro", val_id="wifi-channel")
 
         with Container(classes="card"):
-            yield Label("▶  QUALITÀ SEGNALE RF, RUMORE & SICUREZZA", classes="card-title")
+            yield Label("›  QUALITÀ SEGNALE RF, RUMORE & SICUREZZA", classes="card-title")
             yield _make_kv("Potenza Segnale (RSSI)", val_id="wifi-rssi", val_class="kv-val-green")
             yield _make_kv("Rumore di Fondo (Noise Floor)", val_id="wifi-noise")
             yield _make_kv("Rapporto Segnale/Rumore (SNR)", val_id="wifi-snr", val_class="kv-val-cyan")
@@ -1128,7 +1130,7 @@ class EthernetView(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         with Container(classes="card"):
-            yield Label("▶  COLLEGAMENTO CABLATO ETHERNET (PHY LAYER)", classes="card-title")
+            yield Label("›  COLLEGAMENTO CABLATO ETHERNET (PHY LAYER)", classes="card-title")
             yield _make_kv("Stato Collegamento Ethernet", val_id="eth-status", val_class="kv-val-green")
             yield _make_kv("Interfaccia Cablata", val_id="eth-iface")
             yield _make_kv("Velocità di Link Negoziata", val_id="eth-speed", val_class="kv-val-green")
@@ -1139,7 +1141,7 @@ class EthernetView(VerticalScroll):
             yield _make_kv("MTU Interfaccia Cablata", val_id="eth-mtu")
 
         with Container(classes="card"):
-            yield Label("▶  SCOPERTA SWITCH LAYER 2 (LLDP / CDP / SNMP)", classes="card-title")
+            yield Label("›  SCOPERTA SWITCH LAYER 2 (LLDP / CDP / SNMP)", classes="card-title")
             yield _make_kv("Tipologia Switch / Infrastruttura", val_id="eth-sw-type", val_class="kv-val-cyan")
             yield _make_kv("Nome Switch / Hostname", val_id="eth-sw-name")
             yield _make_kv("Modello Hardware Switch", val_id="eth-sw-model")
@@ -1206,7 +1208,7 @@ class LanView(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         with Container(classes="card"):
-            yield Label("▶  SCHEDA DI RETE & CONFIGURAZIONE LAN", classes="card-title")
+            yield Label("›  SCHEDA DI RETE & CONFIGURAZIONE LAN", classes="card-title")
             yield _make_kv("Interfaccia Attiva", val_id="lan-iface", val_class="kv-val-green")
             yield _make_kv("Indirizzo Fisico (MAC)", val_id="lan-mac")
             yield _make_kv("Produttore Hardware (OUI)", val_id="lan-oui")
@@ -1217,7 +1219,7 @@ class LanView(VerticalScroll):
             yield _make_kv("IPv6 Link-Local / Globale", val_id="lan-ipv6")
 
         with Container(classes="card"):
-            yield Label("▶  GATEWAY, DHCP & RISOLUZIONE DNS", classes="card-title")
+            yield Label("›  GATEWAY, DHCP & RISOLUZIONE DNS", classes="card-title")
             yield _make_kv("Default Gateway (Router)", val_id="lan-gw", val_class="kv-val-cyan")
             yield _make_kv("MAC Address Router", val_id="lan-gw-mac")
             yield _make_kv("Produttore Router (OUI)", val_id="lan-gw-oui")
@@ -1227,7 +1229,7 @@ class LanView(VerticalScroll):
             yield _make_kv("Tempo Risoluzione DNS Locale", val_id="lan-dns-time")
 
         with Container(classes="card"):
-            yield Label("▶  CONVALIDA CRITTOGRAFICA DNSSEC PER RISOLUTORE", classes="card-title")
+            yield Label("›  CONVALIDA CRITTOGRAFICA DNSSEC PER RISOLUTORE", classes="card-title")
             table = DataTable(id="table-dnssec")
             table.zebra_stripes = True
             table.can_focus = True
@@ -1300,7 +1302,7 @@ class WanView(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         with Container(classes="card"):
-            yield Label("▶  CONNESSIONE INTERNET & GEOINTELLIGENCE WAN", classes="card-title")
+            yield Label("›  CONNESSIONE INTERNET & GEOINTELLIGENCE WAN", classes="card-title")
             yield _make_kv("Indirizzo IPv4 Pubblico", val_id="wan-ip4")
             yield _make_kv("Indirizzo IPv6 Pubblico", val_id="wan-ip6")
             yield _make_kv("Connettività Dual-Stack", val_id="wan-dualstack")
@@ -1314,7 +1316,7 @@ class WanView(VerticalScroll):
             yield _make_kv("Path MTU Misurato (DF)", val_id="wan-pmtu")
 
         with Container(classes="card"):
-            yield Label("▶  ANALISI NAT & SICUREZZA ROUTER (STUN RFC 5389)", classes="card-title")
+            yield Label("›  ANALISI NAT & SICUREZZA ROUTER (STUN RFC 5389)", classes="card-title")
             yield _make_kv("Tipologia NAT Mappata", val_id="wan-nat-type")
             yield _make_kv("Comportamento Mappatura", val_id="wan-nat-behavior")
             yield _make_kv("Porta Esterna STUN Mappata", val_id="wan-nat-port")
@@ -1368,7 +1370,7 @@ class PerformanceView(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         with Container(classes="card"):
-            yield Label("▶  MATRICE DI LATENZA TARGET", classes="card-title")
+            yield Label("›  MATRICE DI LATENZA TARGET", classes="card-title")
             table = DataTable(id="table-targets")
             table.zebra_stripes = True
             table.can_focus = True
@@ -1376,7 +1378,7 @@ class PerformanceView(VerticalScroll):
             yield table
 
         with Container(classes="card"):
-            yield Label("▶  DIAGNOSI BUFFERBLOAT SOTTO CARICO", classes="card-title")
+            yield Label("›  DIAGNOSI BUFFERBLOAT SOTTO CARICO", classes="card-title")
             yield _make_kv("Latenza a Riposo (Idle Baseline)", val_id="perf-bb-idle")
             yield _make_kv("Latenza Sotto Carico Download", val_id="perf-bb-dl")
             yield _make_kv("Latenza Sotto Carico Upload", val_id="perf-bb-ul")
@@ -1384,7 +1386,7 @@ class PerformanceView(VerticalScroll):
             yield _make_kv("Diagnosi Coda Router", val_id="perf-bb-desc")
 
         with Container(classes="card"):
-            yield Label("▶  TEST DI VELOCITÀ & THROUGHPUT STREAMING", classes="card-title")
+            yield Label("›  TEST DI VELOCITÀ & THROUGHPUT STREAMING", classes="card-title")
             yield _make_kv("Download (Regime Sostenuto)", val_id="perf-dl-mbps", val_class="kv-val-green")
             yield _make_kv("Download (Picco / Stabilità)", val_id="perf-dl-peak")
             yield _make_kv("Upload (Regime Sostenuto)", val_id="perf-ul-mbps", val_class="kv-val-green")
@@ -1469,7 +1471,7 @@ class MediumView(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         with Container(classes="card"):
-            yield Label("▶  CLASSIFICAZIONE FISICA DELL'ULTIMO MIGLIO", classes="card-title-emerald")
+            yield Label("›  CLASSIFICAZIONE FISICA DELL'ULTIMO MIGLIO", classes="card-title-emerald")
             yield _make_kv("Mezzo Fisico Previsto", val_id="med-predicted", val_class="kv-val-green")
             yield _make_kv("Indice di Confidenza Modello", val_id="med-conf")
             yield _make_kv("Ripartizione Punteggi Tecnologie", val_id="med-scores")
@@ -1477,14 +1479,14 @@ class MediumView(VerticalScroll):
             yield Label("-", id="med-rationale", classes="rationale-bullet")
 
         with Container(classes="card"):
-            yield Label("▶  PARAMETRI DI ACCESSO HOP 2 (BNG / FIRST HOP PROVIDER)", classes="card-title")
+            yield Label("›  PARAMETRI DI ACCESSO HOP 2 (BNG / FIRST HOP PROVIDER)", classes="card-title")
             yield _make_kv("Indirizzo Gateway Operatore (BNG)", val_id="med-bng-ip")
             yield _make_kv("Latenza Minima di Tratta (Min RTT)", val_id="med-bng-min")
             yield _make_kv("Mediana / Coda p95 Salto", val_id="med-bng-med")
             yield _make_kv("Jitter IPDV / Tail Variance", val_id="med-bng-jit")
 
         with Container(classes="card"):
-            yield Label("▶  PROFILO LATENZA SALTO PER SALTO (ACCESS PROFILE)", classes="card-title")
+            yield Label("›  PROFILO LATENZA SALTO PER SALTO (ACCESS PROFILE)", classes="card-title")
             table = DataTable(id="table-hops")
             table.zebra_stripes = True
             table.can_focus = True
@@ -1492,7 +1494,7 @@ class MediumView(VerticalScroll):
             yield table
 
         with Container(classes="card"):
-            yield Label("▶  BANDWIDTH-DELAY PRODUCT (BDP) & QUALITÀ VOCALE ITU-T", classes="card-title")
+            yield Label("›  BANDWIDTH-DELAY PRODUCT (BDP) & QUALITÀ VOCALE ITU-T", classes="card-title")
             yield _make_kv("Bandwidth-Delay Product (BDP)", val_id="med-bdp-bytes")
             yield _make_kv("Finestra TCP Consigliata", val_id="med-tcp-win")
             yield _make_kv("Capacità Canale in Transito", val_id="med-bdp-desc")
@@ -1580,7 +1582,7 @@ class IxpView(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         with Container(classes="card"):
-            yield Label("▶  MAPPA INFRASTRUTTURALE DEL TRAFFICO (BACKHAUL & METRO FLOW)", classes="card-title")
+            yield Label("›  MAPPA INFRASTRUTTURALE DEL TRAFFICO (BACKHAUL & METRO FLOW)", classes="card-title")
             yield Label(" [Client Locale] ──> [Accesso BRAS/DSLAM] ──> [Core Regionale] ──> [Carrier Transit Tier-1] ──> [Hub / Datacenter Campus] ──> [Edge Anycast]", id="flow-breadcrumb", classes="breadcrumb-flow")
             yield _make_kv("1. Client Locale", val_id="flow-client")
             yield _make_kv("2. Accesso BRAS / DSLAM", val_id="flow-access")
@@ -1590,7 +1592,7 @@ class IxpView(VerticalScroll):
             yield _make_kv("6. Edge Anycast di Destinazione", val_id="flow-edge")
 
         with Container(classes="card"):
-            yield Label("▶  FACILITY & DATACENTER CAMPUS IDENTIFICATO", classes="card-title")
+            yield Label("›  FACILITY & DATACENTER CAMPUS IDENTIFICATO", classes="card-title")
             yield _make_kv("Nome Struttura / Facility", val_id="fac-name", val_class="kv-val-cyan")
             yield _make_kv("Campus Tecnologico", val_id="fac-campus")
             yield _make_kv("Indirizzo Fisico", val_id="fac-address")
@@ -1601,7 +1603,7 @@ class IxpView(VerticalScroll):
             yield _make_kv("Coordinate Geografiche GPS", val_id="fac-coords")
 
         with Container(classes="card"):
-            yield Label("▶  ANALISI DIVERGENZA MULTI-TARGET (EXIT POPS & CARRIERS)", classes="card-title")
+            yield Label("›  ANALISI DIVERGENZA MULTI-TARGET (EXIT POPS & CARRIERS)", classes="card-title")
             yield Label("Nessuna divergenza multi-target acquisita", id="div-summary", classes="dim")
             table_div = DataTable(id="table-divergence")
             table_div.zebra_stripes = True
@@ -1610,7 +1612,7 @@ class IxpView(VerticalScroll):
             yield table_div
 
         with Container(classes="card"):
-            yield Label("▶  INTELLIGENCE PEERING IXP & AS-BOUNDARY", classes="card-title")
+            yield Label("›  INTELLIGENCE PEERING IXP & AS-BOUNDARY", classes="card-title")
             yield _make_kv("Internet eXchange / Hub Peering", val_id="ixp-detected", val_class="kv-val-cyan")
             yield _make_kv("Struttura / Campus IXP", val_id="ixp-facility")
             yield _make_kv("Città IXP", val_id="ixp-city")
@@ -1620,7 +1622,7 @@ class IxpView(VerticalScroll):
             yield _make_kv("Interfaccia Peering / Egress (Hop IP)", val_id="ixp-egress")
 
         with Container(classes="card"):
-            yield Label("▶  EFFICIENZA DI ROUTING OTTICO & FIBRA", classes="card-title")
+            yield Label("›  EFFICIENZA DI ROUTING OTTICO & FIBRA", classes="card-title")
             yield _make_kv("Distanza Geodetica Ortodromica", val_id="ixp-dist")
             yield _make_kv("Tratta Fibra Ottica Stimata", val_id="ixp-fiber")
             yield _make_kv("Latenza Luce in Fibra (Minimo Fisico)", val_id="ixp-light")
@@ -1631,7 +1633,7 @@ class IxpView(VerticalScroll):
             yield _make_kv("Ritardo di Accodamento & Switch", val_id="ixp-delay")
 
         with Container(classes="card"):
-            yield Label("▶  STRUTTURE DI PEERING OPERATORE (PEERINGDB)", classes="card-title")
+            yield Label("›  STRUTTURE DI PEERING OPERATORE (PEERINGDB)", classes="card-title")
             table = DataTable(id="table-peeringdb")
             table.zebra_stripes = True
             table.can_focus = True
@@ -1753,14 +1755,14 @@ class DevicesView(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         with Container(classes="card"):
-            yield Label("▶  QUESTO DISPOSITIVO (HOST LOCALE)", classes="card-title")
+            yield Label("›  QUESTO DISPOSITIVO (HOST LOCALE)", classes="card-title")
             yield _make_kv("Indirizzo IPv4 Locale", val_id="dev-this-ip")
             yield _make_kv("Indirizzo MAC", val_id="dev-this-mac")
             yield _make_kv("Produttore Hardware (OUI)", val_id="dev-this-vendor")
             yield _make_kv("Nome Host Locale", val_id="dev-this-host")
 
         with Container(classes="card"):
-            yield Label("▶  DISPOSITIVI RILEVATI NELLA RETE LAN", classes="card-title")
+            yield Label("›  DISPOSITIVI RILEVATI NELLA RETE LAN", classes="card-title")
             yield Label("-", id="dev-total-label", classes="hero-subtitle")
             table = DataTable(id="table-devices")
             table.zebra_stripes = True

@@ -8,12 +8,29 @@ Modulo Stime e Modelli Matematici Avanzati:
 """
 
 import math
+import ipaddress
+import re
 import statistics
 from typing import Dict, Any, Optional, List
 from core.path_latency import bound_path_rtts, min_rtt
 
 
 from core.performance import compute_traffic_accounting
+
+
+MOBILE_RDNS = re.compile(r"(?:^|[-._])(mob|mobile|lte|umts|hsupa|gprs|3g|4g|5g)(?:[-._]|$)", re.I)
+
+
+def _access_metrics(perf, bng):
+    """Use the measured provider hop, falling back to the edge when it is silent."""
+    latency = bng if bng.get('min_ms') is not None else (perf.get('primary_latency') or {})
+    minimum = latency.get('min_ms')
+    gateway = (perf.get('gateway_latency') or {}).get('min_ms')
+    delta = max(0.0, minimum - (gateway or 0.0)) if minimum is not None else None
+    spread = latency.get('spread_ms')
+    if spread is None and minimum is not None and latency.get('median_ms') is not None:
+        spread = max(0.0, latency['median_ms'] - minimum)
+    return delta, spread, latency.get('iqr_ms')
 
 
 class IncoherentGeoReason(str):
@@ -121,6 +138,12 @@ class NetworkEstimator:
         speed = perf_data.get("speed", {})
         down_mbps = speed.get("download_mbps")
         up_mbps = speed.get("upload_mbps")
+        if speed.get("valid") is False or (
+            speed.get("bytes_transferred") is not None
+            and speed["bytes_transferred"] < 2_000_000
+            and (speed.get("bytes_downloaded") or 0) < 2_000_000
+        ):
+            down_mbps = up_mbps = None
 
         # Gateway IP locale
         gw_info = lan_data.get("gateway") or {}
@@ -240,6 +263,25 @@ class NetworkEstimator:
         prim_iqr = prim_lat.get("iqr_ms")
         prim_spike_frac = prim_lat.get("spike_fraction", 0.0)
 
+        radio_delta, radio_spread, radio_iqr = _access_metrics(perf_data, hop2)
+        radio_signature = ((radio_spread is not None and radio_spread >= 12.0)
+                           or (radio_iqr is not None and radio_iqr >= 8.0)
+                           or (radio_delta is not None and radio_delta >= 18.0))
+        try:
+            gateway_addr = ipaddress.ip_address(gw_ip)
+            dynamic_gateway = (gateway_addr.version == 4
+                               and (gateway_addr in ipaddress.ip_network('10.0.0.0/8')
+                                    or gateway_addr in ipaddress.ip_network('172.16.0.0/12'))
+                               and int(gw_ip.rsplit('.', 1)[-1]) not in (1, 254))
+        except ValueError:
+            dynamic_gateway = False
+        wifi = str(p_iface.get('type') or '').lower() in ('wi-fi', 'wifi', 'wireless')
+        randomized_gateway = gw_info.get('vendor') == 'Indirizzo MAC privato/randomizzato (Locally Administered)'
+        if radio_signature and (dynamic_gateway or (wifi and randomized_gateway)):
+            scores["Mobile Cellular (4G LTE / 5G Mobile Hotspot)"] += 25.0
+            add_ev("Gateway compatibile con tethering mobile e latenza di accesso radio.",
+                   {"Mobile Cellular (4G LTE / 5G Mobile Hotspot)": 25.0})
+
         # Evidenza neutra (0 pt) per picchi isolati da traffico concorrente
         spikes_present = (
             (hop2_spike_frac is not None and hop2_spike_frac > 0.0)
@@ -277,12 +319,8 @@ class NetworkEstimator:
                 )
 
             # Caso Radio Mobile o FWA: dispersione temporale intrinseca dello scheduling radio LTE/5G
-            # Basato su spread >= 10 ms e IQR >= 8 ms, oppure access delta elevato (>= 18 ms) con spread radio (>= 6 ms)
-            elif (
-                (hop2_iqr is not None and hop2_iqr >= 8.0 and hop2_spread is not None and hop2_spread >= 10.0)
-                or (access_delta is not None and access_delta >= 18.0 and hop2_spread is not None and hop2_spread >= 6.0)
-                or (hop2_spread is not None and hop2_spread >= 12.0)
-            ):
+            # Spread >= 12 ms, IQR >= 8 ms o ritardo netto di accesso >= 18 ms.
+            elif radio_signature:
                 scores["Mobile Cellular (4G LTE / 5G Mobile Hotspot)"] += 25.0
                 scores["FWA (Fixed Wireless Access / Eolo / Linkem)"] += 20.0
                 scores["FTTH (Fibra Ottica Pura GPON / XGS-PON)"] -= 15.0
@@ -308,7 +346,13 @@ class NetworkEstimator:
 
         elif edge_min_rtt is not None:
             # Se Hop 2 non risponde all'ICMP diretto, usa l'edge min RTT (regole capped a max 25 pt)
-            if edge_min_rtt < 8.0:
+            if radio_signature:
+                scores["Mobile Cellular (4G LTE / 5G Mobile Hotspot)"] += 25.0
+                scores["FWA (Fixed Wireless Access / Eolo / Linkem)"] += 20.0
+                add_ev("Dispersione o ritardo di accesso edge compatibile con scheduling radio.",
+                       {"Mobile Cellular (4G LTE / 5G Mobile Hotspot)": 25.0,
+                        "FWA (Fixed Wireless Access / Eolo / Linkem)": 20.0})
+            elif edge_min_rtt < 8.0:
                 scores["FTTH (Fibra Ottica Pura GPON / XGS-PON)"] += 25.0
                 add_ev(
                     f"Latenza minima verso l'edge di soli {edge_min_rtt:.1f} ms: indicativo di fibra ottica diretta.",
@@ -402,11 +446,11 @@ class NetworkEstimator:
                     "rDNS pubblico con token di accesso in fibra (FTTH/GPON).",
                     {"FTTH (Fibra Ottica Pura GPON / XGS-PON)": 15.0}
                 )
-            elif any(t in rdns for t in ("mobile", "lte", "umts", "gprs", "3g", "4g", "5g")):
-                scores["Mobile Cellular (4G LTE / 5G Mobile Hotspot)"] += 15.0
+            elif MOBILE_RDNS.search(rdns):
+                scores["Mobile Cellular (4G LTE / 5G Mobile Hotspot)"] += 20.0
                 add_ev(
                     "rDNS pubblico con token di rete mobile.",
-                    {"Mobile Cellular (4G LTE / 5G Mobile Hotspot)": 15.0}
+                    {"Mobile Cellular (4G LTE / 5G Mobile Hotspot)": 20.0}
                 )
             elif "dsl" in rdns:
                 c = {}
@@ -1064,8 +1108,22 @@ class NetworkEstimator:
         na_reason = None
         medium = (medium_name or "")
         medium_lower = medium.lower()
-        is_radio_or_sat = any(k in medium_lower for k in ("mobile", "cellular", "4g", "5g", "hotspot", "fwa", "eolo", "linkem", "satellite", "starlink", "geo", "leo"))
-        is_wired = any(k in medium_lower for k in ("ftth", "fttc", "adsl", "vdsl", "rame", "fibra", "ethernet")) or (not is_radio_or_sat and not is_vpn)
+        rdns = wan_data.get('reverse_dns') or ''
+        access_delta, hop2_spread, hop2_iqr = _access_metrics(perf_data, bng)
+        primary_latency = perf_data.get('primary_latency') or {}
+        is_lat_noisy = ((primary_latency.get('jitter_ms') or 0) > 15.0
+                        or (primary_latency.get('spike_fraction') or 0) > .05
+                        or (primary_latency.get('iqr_ms') or 0) >= 8.0
+                        or (primary_latency.get('spread_ms') or 0) >= 12.0)
+        is_radio_or_sat = (
+            any(k in medium_lower for k in ("mobile", "cellular", "4g", "5g", "hotspot", "fwa", "eolo", "linkem", "satellite", "starlink", "geo", "leo"))
+            or bool(MOBILE_RDNS.search(rdns))
+            or (access_delta is not None and access_delta >= 20.0
+                and ((hop2_spread is not None and hop2_spread >= 10.0)
+                     or (hop2_iqr is not None and hop2_iqr >= 8.0)))
+            or (is_lat_noisy and access_delta is not None and access_delta >= 25.0)
+        )
+        is_wired = not is_radio_or_sat and not is_vpn
 
         anycast_colo = (ixp_data or {}).get("anycast_colo") or wan_data.get("colo") or (wan_data.get("cloudflare_trace") or {}).get("colo")
         colo_cand = str(anycast_colo or "").strip().upper()
@@ -1105,12 +1163,12 @@ class NetworkEstimator:
             is_unidentified = False
             anycast_fallback_used = True
 
-        if not geo_ok:
+        if is_radio_or_sat:
+            na_reason = "Non applicabile su collegamenti mobili o con latenza di accesso instabile/radio"
+        elif not geo_ok:
             na_reason = "Coordinate WAN non disponibili"
         elif is_vpn:
             na_reason = "VPN/proxy attivo: la geolocalizzazione e' quella dell'uscita del tunnel"
-        elif is_radio_or_sat:
-            na_reason = "Non applicabile su mezzi radio, FWA o satellitari (latenza dominata dalla tratta aerea e dal core gateway)"
         elif is_unidentified:
             na_reason = "IXP non identificato sul percorso: nessuna distanza o floor ottico calcolabile"
         elif not hub_rtt_ms:

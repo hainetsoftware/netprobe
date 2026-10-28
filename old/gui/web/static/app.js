@@ -194,8 +194,11 @@ function renderAll(data) {
   const sys = data.system || {};
 
   // 1. Meta sistema
-  document.getElementById("system-meta").textContent = 
-    `${sys.hostname || "localhost"} • ${sys.os || ""} ${sys.os_release || ""} (${sys.machine || ""})`;
+  const savedOs = sys.os === "Darwin" ? "macOS" : [sys.os, sys.os_release].filter(Boolean).join(" ");
+  const prettyOs = sys.pretty_os || `${savedOs || "N/D"}${sys.machine ? ` (${sys.machine})` : ""}`;
+  const activeInterface = lan.primary_interface || {};
+  document.getElementById("system-meta").textContent =
+    `Host: ${sys.hostname || "N/D"} | OS: ${prettyOs} | Python: ${sys.python_version || sys.python || "N/D"} | Interfaccia: ${activeInterface.name || lan.primary_interface_name || "N/D"} (${lan.interface_type || activeInterface.type || "N/D"})`;
 
   // 2. Quick Metrics Top Cards
   const speed = perf.speed || {};
@@ -607,7 +610,7 @@ function renderModels(est, ixp) {
       noisyWarningEl.style.borderRadius = "4px";
       noisyWarningEl.style.backgroundColor = "rgba(234, 179, 8, 0.15)";
       noisyWarningEl.style.color = "#eab308";
-      noisyWarningEl.textContent = "⚠️ Misura disturbata: possibile traffico concorrente sulla linea (streaming, backup). Ripetere a linea libera per una stima più affidabile.";
+      noisyWarningEl.textContent = "[WARN] Misura disturbata: possibile traffico concorrente sulla linea (streaming, backup). Ripetere a linea libera per una stima più affidabile.";
       const containerMed = document.getElementById("model-medium-name").parentElement;
       if (containerMed) containerMed.appendChild(noisyWarningEl);
     }
@@ -744,7 +747,7 @@ function renderDevices(devices, thisDevice, permissionsWarning) {
     const warnTr = document.createElement("tr");
     warnTr.innerHTML = `
       <td colspan="5" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; padding: 12px; font-weight: 600; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 4px;">
-        ⚠️ ${permissionsWarning}
+        [WARN] ${permissionsWarning}
       </td>
     `;
     tbody.appendChild(warnTr);

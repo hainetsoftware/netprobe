@@ -374,8 +374,10 @@ class TestTransportDeepProbe(unittest.TestCase):
 
         self.assertIn("metro_egress", school_res)
         metro_school = school_res["metro_egress"]
-        self.assertEqual(metro_school["metro_city"], "Milano")
-        self.assertEqual(metro_school["metro_code"], "MXP")
+        # A colo alone cannot identify an egress when no public border was observed.
+        self.assertIsNone(metro_school["metro_city"])
+        self.assertIsNone(metro_school["metro_code"])
+        self.assertEqual(school_res["detected_ixp"], "IXP non identificato")
 
         # B. real_wifi_fttc.json
         fttc_path = os.path.join(self.fixtures_dir, "real_wifi_fttc.json")

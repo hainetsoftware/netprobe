@@ -106,7 +106,7 @@ def run_smoke_test():
                 print(f"    - {e}")
             sys.exit(1)
         else:
-            print("\n[✓] ALL INVARIANTS VERIFIED SUCCESSFULLY.")
+            print("\n[OK] ALL INVARIANTS VERIFIED SUCCESSFULLY.")
             sys.exit(0)
 
     finally:

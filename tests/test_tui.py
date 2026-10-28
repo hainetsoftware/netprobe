@@ -250,6 +250,7 @@ class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
             app._on_scan_success({})
             status = str(app.query_one("#status-label", Label).render())
             self.assertIn("COMPLETATO", status)
+            self.assertIn("[OK]", status)
             self.assertIn("in 00:12", status)
             self.assertIsNone(app._scan_timer)
 
@@ -350,6 +351,23 @@ class TestTextualTUIApp(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             app.action_scroll_up()
             await pilot.pause()
+
+    async def test_dashboard_system_header_uses_report_fields(self):
+        import copy
+        from tui.app import NetProbeTUIApp
+        from textual.widgets import Label
+
+        data = copy.deepcopy(self.eth_data)
+        data['system'] = {'hostname': 'test-host', 'os': 'Darwin', 'machine': 'arm64',
+                          'pretty_os': 'macOS 15.1 (arm64)', 'python_version': '3.15.0'}
+        data['lan']['primary_interface']['name'] = 'en0'
+        data['lan']['interface_type'] = 'Wi-Fi'
+        app = NetProbeTUIApp(initial_data=data, auto_scan=False)
+        async with app.run_test(size=(160, 45)):
+            label = app.query_one('#dash-sys-label', Label)
+            self.assertEqual(str(label.content),
+                'Host: test-host | OS: macOS 15.1 (arm64) | Python: 3.15.0 | Interfaccia: en0 (Wi-Fi)')
+            self.assertNotIn('(-)', str(label.content))
 
     async def test_tui_data_population(self):
         """Verifica che i dati popolino metriche, Wi-Fi, Ethernet e tutte le 5 DataTable."""

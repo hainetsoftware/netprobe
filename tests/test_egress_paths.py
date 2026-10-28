@@ -66,6 +66,46 @@ class EgressPathTests(unittest.TestCase):
         self.assertEqual(result['matched_hop_ip'], '185.191.181.71')
         self.assertEqual(result['metro_egress']['routing_topology'], 'MULTI_EXIT_SPLIT')
 
+    def test_private_only_trace_clears_unobserved_ixp_metadata(self):
+        path = [hop(1, '10.172.9.33', 2), hop(3, '172.17.49.177', 50), hop(6, '*', None)]
+        result = self.analyzer.reclassify_offline(self.wan, path, anycast_colo='FCO',
+                                                peeringdb_info=self.presence)
+        self.assertEqual(result['detected_ixp'], 'IXP non identificato')
+        self.assertFalse(result['is_identified'])
+        for key in ('ixp_city', 'ixp_facility', 'peering_type', 'coordinates',
+                    'datacenter_facility', 'matched_hop_ip', 'rtt_to_ixp_ms'):
+            self.assertIsNone(result[key], key)
+        metro = result['metro_egress']
+        for key in ('metro_city', 'metro_code', 'exit_router_ip', 'facility_name'):
+            self.assertIsNone(metro[key], key)
+        self.assertEqual(metro['interconnect_type'], 'BACKBONE_TRANSIT')
+        self.assertEqual(metro['ixp_match_method'], 'HEURISTIC_FALLBACK')
+
+    def test_secondary_public_exit_survives_private_only_primary(self):
+        primary = [hop(1, '10.172.9.33', 2), hop(3, '172.17.49.177', 50), hop(6, '*', None)]
+        secondary = primary[:2] + [hop(4, '217.29.67.27', 55, 'vodafone.mix-it.net', 30722),
+                                  hop(5, '217.29.66.1', 58)]
+        # Select the confirmed secondary even without CDN consensus (or with a different colo).
+        for cdn in ({}, {'verified_metro_code': 'FCO'}):
+            with self.subTest(cdn=cdn):
+                result = self.analyzer.reclassify_offline(self.wan, primary, anycast_colo='FCO',
+                    peeringdb_info={}, multi_target_analysis={'raw_paths': {'domestic_ixp': secondary}},
+                    multi_cdn_inspection=cdn)
+                self.assertTrue(result['is_identified'])
+                self.assertEqual(result['matched_hop_ip'], '217.29.67.27')
+                self.assertEqual(result['metro_egress']['metro_city'], 'Milano')
+                self.assertEqual(result['egress_latency_path']['target'], '217.29.66.1')
+                self.assertEqual(result['egress_latency_path']['hops'], secondary)
+
+    def test_secondary_target_rtt_is_passed_to_exit_bounds(self):
+        path = copy.deepcopy(self.milan)
+        path[-1].update(rtts=[14.68], rtt_ms=14.68)
+        result = self.analyzer.reclassify_offline(self.wan, self.rome,
+            peeringdb_info=self.presence, multi_target_analysis={
+                'raw_paths': {'google': path}, 'targets': {'google': {'min_rtt_ms': 6.2}}})
+        secondary = next(e for e in result['egress_paths'] if e['target'] == '8.8.8.8')
+        self.assertEqual(secondary['effective_rtt_ms'], 6.2)
+
     def test_optical_clamps_copp_and_prioritizes_verified_bng(self):
         result = self.replay(multi=False)
         perf = {'primary_latency': {'min_ms': 6.4}, 'gateway_latency': {'min_ms': .54}}

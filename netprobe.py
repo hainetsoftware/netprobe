@@ -67,7 +67,7 @@ def run_cli_scan(quick: bool = False, full: bool = False, json_output: bool = Fa
     if not json_output:
         ui.print_banner(sys_summary)
         scan_type_str = "RAPIDA" if quick else "COMPLETA (con test banda e bufferbloat)"
-        print(f"{ui.BOLD}{ui.BRIGHT_CYAN}⏳ Avvio scansione di rete {scan_type_str}...{ui.RESET}\n")
+        print(f"{ui.BOLD}{ui.BRIGHT_CYAN}[INFO] Avvio scansione di rete {scan_type_str}...{ui.RESET}\n")
 
     # 1. LAN Scanner (con eventuale Switch Discovery se Ethernet)
     lan_scanner = LanScanner()
@@ -124,7 +124,7 @@ def run_cli_scan(quick: bool = False, full: bool = False, json_output: bool = Fa
     # Export opzionale
     if export_path:
         export_report(full_report, export_path)
-        print(f"{ui.BRIGHT_GREEN}✓ Report esportato con successo in: {export_path}{ui.RESET}\n")
+        print(f"{ui.BRIGHT_GREEN}[OK] Report esportato con successo in: {export_path}{ui.RESET}\n")
 
 
 def export_report(data: dict, file_path: str):

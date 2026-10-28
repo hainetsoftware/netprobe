@@ -157,7 +157,8 @@ class TestIXPAndOpticalGeneralization(unittest.TestCase):
         )
         self.assertFalse(opt["applicable"])
         self.assertIsNone(opt["routing_efficiency_pct"])
-        self.assertIn("radio, FWA o satellitari", opt["not_applicable_reason"])
+        self.assertEqual(opt["not_applicable_reason"],
+                         "Non applicabile su collegamenti mobili o con latenza di accesso instabile/radio")
 
     def test_starlink_satellite_applicability_guard(self):
         hops = [
@@ -181,7 +182,8 @@ class TestIXPAndOpticalGeneralization(unittest.TestCase):
         )
         self.assertFalse(opt["applicable"])
         self.assertIsNone(opt["routing_efficiency_pct"])
-        self.assertIn("radio, FWA o satellitari", opt["not_applicable_reason"])
+        self.assertEqual(opt["not_applicable_reason"],
+                         "Non applicabile su collegamenti mobili o con latenza di accesso instabile/radio")
 
     def test_mobile_hotspot_applicability_guard(self):
         wan = {"asn": 1267, "city": "Milano", "coordinates": {"latitude": 45.46, "longitude": 9.19}}
@@ -189,7 +191,8 @@ class TestIXPAndOpticalGeneralization(unittest.TestCase):
             wan, {"primary_latency": {"min_ms": 42.0}}, None, medium_name="Mobile Cellular (4G LTE / 5G Mobile Hotspot)"
         )
         self.assertFalse(opt["applicable"])
-        self.assertIn("radio, FWA o satellitari", opt["not_applicable_reason"])
+        self.assertEqual(opt["not_applicable_reason"],
+                         "Non applicabile su collegamenti mobili o con latenza di accesso instabile/radio")
 
     # ------------------------------------------------------------------
     # 4. Inaccurate GeoIP Edge Case

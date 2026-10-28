@@ -2680,6 +2680,11 @@ class IXPAnalyzer:
         border = border or (candidates[-1] if candidates else None)
         if not border:
             return None
+        try:
+            if not ipaddress.ip_address(border['ip']).is_global:
+                return None
+        except ValueError:
+            return None
         parsed = parse_rdns_metro_and_role(border.get('rdns'))
         # HTTP observations may suggest a city only when the hop has no city token.
         path_colo = parsed.get('metro_code') or colo
@@ -2724,7 +2729,9 @@ class IXPAnalyzer:
                       'domestic_ixp': '217.29.66.1'}
         for name, path in multi.get('raw_paths', {}).items():
             dest = target_ips.get(name, (multi.get('targets', {}).get(name) or {}).get('target_ip') or name)
-            node = self._resolve_exit_path(dest, path, wan, info, None, result.get('hop2_bng'))
+            target_rtt = (multi.get('targets', {}).get(name) or {}).get('min_rtt_ms')
+            node = self._resolve_exit_path(dest, path, wan, info, None, result.get('hop2_bng'),
+                                           target_rtt=target_rtt)
             if node and not any(e['target'] == dest and e['border_ip'] == node['border_ip'] for e in exits):
                 exits.append(node)
         # CDN consensus selects an observed border; it cannot relocate any border.
@@ -2733,6 +2740,9 @@ class IXPAnalyzer:
                     and self._city_key(e['city']) == self._city_key(wanted)]
         # Prefer the observed route with the tightest downstream RTT bound.
         selected = min(matching, key=lambda e: e['effective_rtt_ms'] if e['effective_rtt_ms'] is not None else float('inf')) if matching else primary_exit
+        if primary_exit is None and exits:
+            selected = min(exits, key=lambda e: (-e['confidence'],
+                e['effective_rtt_ms'] if e['effective_rtt_ms'] is not None else float('inf')))
         metro = result['metro_egress']
         if selected:
             cl = selected['_classification']
@@ -2757,9 +2767,14 @@ class IXPAnalyzer:
                          transit_carrier=result.get('peering_type'))
             result['egress_latency_path'] = {'target': selected['target'], 'hops': selected['_hops']}
         else:
-            http_hub = ANYCAST_COLO_HUBS.get(colo, {})
-            metro.update(metro_city=http_hub.get('city'), metro_code=colo if http_hub else None,
-                         exit_router_ip=None, facility_name=None,
+            result.update(detected_ixp='IXP non identificato', is_identified=False,
+                          ixp_city=None, ixp_facility=None, peering_type=None, coordinates=None,
+                          matched_hop_ip=None, matched_subnet=None, rtt_to_ixp_ms=None,
+                          datacenter_facility=None, detection_method=None, confidence=None)
+            result.pop('egress_latency_path', None)
+            metro.update(metro_city=None, metro_code=None, exit_router_ip=None,
+                         exit_router_rdns=None, facility_name=None, transit_carrier=None,
+                         verified_via=None, interconnect_confidence=None, colocated_peering_presence=[],
                          interconnect_type='BACKBONE_TRANSIT', ixp_match_method='HEURISTIC_FALLBACK')
         if selected and selected['interconnect_type'] != 'PUBLIC_IXP_LAN':
             facility = result.get('datacenter_facility') or {}
