@@ -9,6 +9,28 @@ from ui.menu import ManagementMenu
 
 
 class ManagementTests(unittest.IsolatedAsyncioTestCase):
+    async def test_open_menu_refreshes_live_clean_and_congested_counts(self):
+        from core.ingestion import ingest_report
+        from tests.test_storage import latest_report
+        with tempfile.TemporaryDirectory() as directory:
+            storage = StorageManager(Path(directory) / 'netprobe.db')
+            app = NetProbeTUIApp(storage=storage)
+            async with app.run_test(size=(100, 60)) as pilot:
+                await pilot.press('m')
+                clean = latest_report()
+                clean['performance']['speed']['valid'] = False
+                ingest_report(clean, storage=storage)
+                congested = latest_report()
+                congested['performance']['bufferbloat']['download_delta_ms'] = 60
+                ingest_report(congested, storage=storage)
+                await pilot.pause(1.1)
+                text = str(app.screen.query_one('#management-status', Label).render())
+                self.assertIn('Cached Runs: 2 total (1 clean, 1 congested)', text)
+                storage.reset_telemetry()
+                await pilot.pause(1.1)
+                self.assertIn('Cached Runs: 0 total (0 clean, 0 congested)',
+                              str(app.screen.query_one('#management-status', Label).render()))
+
     async def test_m_theme_restart_and_factory_reset(self):
         with tempfile.TemporaryDirectory() as directory:
             storage = StorageManager(Path(directory) / 'netprobe.db')

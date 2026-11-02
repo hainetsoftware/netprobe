@@ -9,6 +9,8 @@ import sys
 import time
 import json
 import sqlite3
+import logging
+from core.ingestion import ingest_report
 from core.storage import StorageManager
 from ui.menu import ManagementMenu
 from typing import Optional, Dict, Any, List, Tuple
@@ -112,8 +114,9 @@ class NetProbeTUIApp(App):
         if self.storage is None:
             try:
                 self.storage = StorageManager()
-            except (OSError, sqlite3.Error) as error:
+            except Exception as error:
                 self.cache_error = str(error)
+                logging.getLogger(__name__).debug("Telemetry cache unavailable: %s", error)
         self.initial_data = initial_data
         self.auto_scan = auto_scan
         self.is_scanning = False
@@ -126,7 +129,11 @@ class NetProbeTUIApp(App):
         self._theme_index = 0
         for custom_theme in CUSTOM_THEMES:
             self.register_theme(custom_theme)
-        self.theme = self.storage.get_theme() if self.storage else THEME_CYCLE[0][0]
+        try:
+            self.theme = self.storage.get_theme() if self.storage else THEME_CYCLE[0][0]
+        except Exception as error:
+            logging.getLogger(__name__).debug("Telemetry theme unavailable: %s", error)
+            self.theme = THEME_CYCLE[0][0]
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -161,8 +168,6 @@ class NetProbeTUIApp(App):
         yield Footer()
 
     def on_mount(self):
-        if self.cache_error:
-            self.notify("Cache non disponibile: " + self.cache_error, severity="warning")
         if self.initial_data:
             self._apply_scan_data(self.initial_data)
             self.query_one("#status-label", Label).update("Dati diagnostici caricati con successo.")
@@ -413,11 +418,7 @@ class NetProbeTUIApp(App):
             validate_scan_results(full_report)
             full_report["field_status"] = build_field_provenance(full_report)
 
-            if self.storage:
-                try:
-                    self.storage.store_telemetry_run(full_report)
-                except (OSError, sqlite3.Error) as error:
-                    self.call_from_thread(self.notify, f"Cache non disponibile: {error}", severity="warning")
+            ingest_report(full_report, storage=self.storage)
             progress_cb("Scansione completata con successo!", 100)
             self.call_from_thread(self._on_scan_success, full_report)
 

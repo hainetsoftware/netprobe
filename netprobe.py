@@ -10,7 +10,6 @@ import os
 import argparse
 import json
 import time
-import sqlite3
 
 # Assicura encoding UTF-8 per console multipiattaforma (Windows cp1252 / CI fix)
 if sys.stdout and hasattr(sys.stdout, "reconfigure"):
@@ -61,7 +60,7 @@ def run_cli_scan(quick: bool = False, full: bool = False, json_output: bool = Fa
     from core.validators import validate_scan_results
     from core.provenance import build_field_provenance
     from cli.terminal_ui import TerminalUI
-    from core.storage import StorageManager
+    from core.ingestion import ingest_report
     ui = TerminalUI(no_color=no_color)
     sys_summary = get_system_summary()
 
@@ -114,22 +113,18 @@ def run_cli_scan(quick: bool = False, full: bool = False, json_output: bool = Fa
     # Mappatura della provenienza dei campi (Task 3)
     full_report["field_status"] = build_field_provenance(full_report)
 
-    try:
-        StorageManager().store_telemetry_run(full_report)
-    except (OSError, sqlite3.Error) as error:
-        print(f"[NetProbe] Cache non disponibile: {error}", file=sys.stderr)
+    if not json_output:
+        ui.render_full_report(full_report)
 
-    # Output JSON puro
-    if json_output:
-        print(json.dumps(full_report, ensure_ascii=False, indent=2))
-        return
-
-    # Render report formattato su terminale
-    ui.render_full_report(full_report)
-
-    # Export opzionale
     if export_path:
         export_report(full_report, export_path)
+
+    # Finalize once per scan, whether or not a JSON file was requested.
+    ingest_report(full_report)
+
+    if json_output:
+        print(json.dumps(full_report, ensure_ascii=False, indent=2))
+    elif export_path:
         print(f"{ui.BRIGHT_GREEN}[OK] Report esportato con successo in: {export_path}{ui.RESET}\n")
 
 

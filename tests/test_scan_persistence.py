@@ -34,6 +34,6 @@ class ScanPersistenceTests(unittest.TestCase):
                     run_cli_scan(json_output=True)
                     self.assertEqual(json.loads(stdout.getvalue())['ixp'], data['ixp'])
                     if cache_failure:
-                        self.assertIn('Cache non disponibile', stderr.getvalue())
+                        self.assertEqual(stderr.getvalue(), '')
             self.assertEqual(storage.status()['total'], 1)
             self.assertEqual(storage.baseline_runs()[0]['bng_floor_ms'], 2.5)

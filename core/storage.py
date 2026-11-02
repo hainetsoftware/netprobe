@@ -49,7 +49,8 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_subnet ON telemetry_runs(subnet_prefix,
 
 
 class StorageManager:
-    def __init__(self, db_path=None):
+    def __init__(self, db_path=None, timeout=0.5):
+        self.timeout = timeout
         self.db_path = Path(db_path) if db_path else data_directory() / 'netprobe.db'
         try:
             self._prepare_path(restrict_parent=db_path is None)
@@ -79,7 +80,7 @@ class StorageManager:
 
     @contextmanager
     def connection(self):
-        db = sqlite3.connect(str(self.db_path), timeout=10)
+        db = sqlite3.connect(str(self.db_path), timeout=self.timeout)
         db.row_factory = sqlite3.Row
         try:
             db.execute('PRAGMA journal_mode=WAL')
@@ -142,7 +143,7 @@ class StorageManager:
 
     def status(self):
         with self.connection() as db:
-            row = db.execute('SELECT COUNT(*), COALESCE(SUM(is_valid=1 AND is_congested=0),0), COALESCE(SUM(is_congested),0) FROM telemetry_runs').fetchone()
+            row = db.execute('SELECT COUNT(*), COALESCE(SUM(is_congested=0),0), COALESCE(SUM(is_congested),0) FROM telemetry_runs').fetchone()
         size = sum(p.stat().st_size for p in (self.db_path, Path(str(self.db_path)+'-wal'), Path(str(self.db_path)+'-shm')) if p.exists())
         return dict(path=str(self.db_path), size_kb=round(size/1024, 1), total=row[0], clean=row[1], congested=row[2], theme=self.get_theme())
 

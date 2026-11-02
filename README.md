@@ -234,15 +234,21 @@ SQLite uses WAL, NORMAL synchronization, foreign keys, private directory/file
 permissions on POSIX, and connections scoped to each operation. The database is
 `netprobe.db` under `$XDG_DATA_HOME/netprobe` (Linux, default
 `~/.local/share/netprobe`), `~/Library/Application Support/NetProbe` (macOS), or
-`%LOCALAPPDATA%/NetProbe` (Windows), with `~/.netprobe` as fallback. Cache failures
-produce a warning and diagnostics continue.
+`%LOCALAPPDATA%/NetProbe` (Windows), with `~/.netprobe` as fallback. Cache
+failures are logged only at debug level; diagnostics continue normally.
+Every completed CLI or TUI scan is ingested automatically, including scans without
+a JSON export. Re-exporting a report does not insert another telemetry row. SQLite
+lock waits are bounded to 0.5 seconds. Management counters refresh once per second
+and count all non-congested runs as clean; baseline eligibility also requires validity.
 
 Ingestion always stores the BNG minimum RTT as `bng_floor_ms`. Congestion is
 flagged above 45 ms bufferbloat delta, 8 ms gateway IQR, 15 ms BNG IQR, or 20%
 BNG spikes. Missing BNG measurements, invalid transfers and worker errors exclude
 a run from training. Quick scans may omit throughput. `baseline_runs()` returns
 only valid, uncongested observations; the existing estimator does not train on
-historical runs yet. After ten runs from a public /24 or /48 in seven days,
+historical runs yet. Subnets come from the primary LAN IPv4 address and netmask
+(default /24); older captures without LAN addresses use the public /24 or /48.
+After ten runs from the same subnet in seven days,
 subsequent rows receive weight `10 / (prior_count + 1)`.
 
 Host identifiers use SHA-256 with a local random salt. JSONL exports omit host

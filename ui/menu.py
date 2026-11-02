@@ -45,12 +45,17 @@ class ManagementMenu(ModalScreen):
 
     def on_mount(self):
         self.refresh_status()
+        self.set_interval(1.0, self.refresh_status)
 
     def refresh_status(self):
-        s = self.storage.status()
+        try:
+            s = self.storage.status()
+        except (OSError, sqlite3.Error) as error:
+            self.query_one('#management-status', Label).update(f'Cache unavailable: {error}')
+            return
         self.query_one('#management-status', Label).update(
             f"Database Path: {s['path']}\nDatabase Size: {s['size_kb']} KB\n"
-            f"Cached Runs: {s['total']} ({s['clean']} clean, {s['congested']} congested)\n"
+            f"Cached Runs: {s['total']} total ({s['clean']} clean, {s['congested']} congested)\n"
             f"Active Theme: {s['theme']}")
 
     def action_close(self):
