@@ -51,6 +51,7 @@ All'avvio, NetProbe attende un comando nella dashboard suddivisa in 9 schede:
 | `Spazio` / `s` | Scansione completa |
 | `r` | Scansione rapida |
 | `m` / `M` | Gestione cache, export JSONL e selezione tema |
+| `o` / `O` nel menu Gestione | Apri la cartella del database nel file manager |
 | `t` | Scorri i quattro temi (salvataggio immediato) |
 | `e` | Esporta il report diagnostico |
 | `q` | Esci |
@@ -80,6 +81,9 @@ cd netprobe
 
 # 4. Esportazione su file JSON
 ./netprobe.py --non-interactive --export diagnosi.json
+
+# Apri la cartella del database ed esci senza eseguire scansioni
+./netprobe.py --open-db
 ```
 
 ---
@@ -132,6 +136,7 @@ python3 tools/replay.py tests/fixtures/real_ethernet_run1.json
 | `Space` / `s` | Full scan |
 | `r` | Quick scan |
 | `m` / `M` | Cache management, JSONL export and theme selection |
+| `o` / `O` in Management | Open the database directory in the native file manager |
 | `t` | Cycle the four themes (saved immediately) |
 | `e` | Export diagnostic report |
 | `q` | Exit |
@@ -229,6 +234,15 @@ usage must be checked on the target connection.
 `midnight-slate`, `monochrome-light`, `oled-black`, or `nordic-frost`; the choice
 is saved immediately. Ctrl+P is disabled. Cache resets require repeating the
 selected action; telemetry reset keeps settings, while factory reset clears both.
+Press `o` / `O` here, or run `python netprobe.py --open-db`, to open the database
+directory in the native file manager. The CLI option exits without scanning.
+
+Active discovery uses the primary physical subnet; virtual and APIPA adapters
+remain visible in `lan.all_interfaces`. The TCP sweep prioritizes ARP candidates,
+uses ports 80/443 with 64 workers and at most 150 ms per connection, and limits
+large subnets to 1024 new candidates. Windows echo bursts avoid `ping`'s fixed
+one-second packet spacing. Multi-target traces share silent-hop hints for that
+run, and SSDP/NAT-PMP share a 1.5-second socket budget on the primary interface.
 
 SQLite uses WAL, NORMAL synchronization, foreign keys, private directory/file
 permissions on POSIX, and connections scoped to each operation. The database is

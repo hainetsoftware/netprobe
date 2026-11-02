@@ -11,6 +11,8 @@ from core.storage import THEMES
 
 class ManagementMenu(ModalScreen):
     BINDINGS = [Binding('q', 'close', 'Return'), Binding('escape', 'close', 'Return'),
+                Binding('o', 'open_db', 'Open Database Directory'),
+                Binding('O', 'open_db', show=False),
                 *[Binding(str(n), f'choose({n})', show=False) for n in range(1, 6)]]
     DEFAULT_CSS = '''
     ManagementMenu { align: center middle; }
@@ -41,6 +43,7 @@ class ManagementMenu(ModalScreen):
                 for theme in THEMES:
                     yield Button(theme, id=f'select-{theme}')
             yield Label('', id='management-message', markup=False)
+            yield Button('[o] Open Database Directory in File Manager', id='manage-open-db')
             yield Button('[q] Return to Diagnostics', id='manage-close')
 
     def on_mount(self):
@@ -60,6 +63,13 @@ class ManagementMenu(ModalScreen):
 
     def action_close(self):
         self.dismiss()
+
+    def action_open_db(self):
+        self.confirm_action = None
+        opened = self.storage.open_storage_dir()
+        self.query_one('#management-message', Label).update(
+            '[NetProbe] Cartella aperta nel file manager.' if opened else
+            '[NetProbe] Impossibile aprire la cartella del database.')
 
     def action_choose(self, choice):
         try:
@@ -96,6 +106,8 @@ class ManagementMenu(ModalScreen):
         identifier = event.button.id or ''
         if identifier == 'manage-close':
             self.dismiss()
+        elif identifier == 'manage-open-db':
+            self.action_open_db()
         elif identifier.startswith('select-'):
             self.confirm_action = None
             theme = identifier[len('select-'):]

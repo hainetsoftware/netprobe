@@ -9,6 +9,8 @@ import re
 import time
 import os
 import concurrent.futures
+import ipaddress
+import itertools
 from typing import Dict, List, Any, Optional, Tuple
 
 from core.platform_info import is_macos, is_linux, is_windows, run_cmd, run_cmd_shell
@@ -17,6 +19,7 @@ from core.router_id import identify_router, resolve_vendor
 from core.adapters import get_os_adapter
 from core.dnssec_validator import validate_dnssec_resolvers
 from core.validators import compute_network_and_broadcast
+from core.interfaces import is_virtual_or_secondary_interface, interface_is_eligible, local_network
 
 
 def extract_eui64_mac(ipv6_addr: str) -> Optional[str]:
@@ -77,29 +80,37 @@ class LanScanner:
         """Esegue una scansione esaustiva di tutti i parametri LAN."""
         gateway_info = self.get_default_gateway()
         active_iface = gateway_info.get("interface")
-        try:
-            router = identify_router(gateway_info.get("ipv4"), gateway_info.get("mac"))
-            gateway_info["mac"] = router.get("mac") or gateway_info.get("mac")
-            gateway_info["vendor"] = router.get("vendor") or gateway_info.get("vendor")
-            gateway_info["model"] = router.get("model")
-            gateway_info["identified_by"] = router.get("sources")
-            gateway_info["http_server"] = router.get("http_server")
-        except Exception:
-            pass
         
         interfaces = self.get_network_interfaces()
         
         # Identifica interfaccia primaria attiva
         primary_iface = None
-        if active_iface and active_iface in interfaces:
+        if active_iface in interfaces and interface_is_eligible(active_iface, interfaces[active_iface]):
             primary_iface = interfaces[active_iface]
         else:
             # Fallback: prima interfaccia con IPv4 e UP
             for name, iface in interfaces.items():
-                if iface.get("ipv4") and "127.0.0.1" not in iface.get("ipv4"):
+                if interface_is_eligible(name, iface):
                     primary_iface = iface
                     active_iface = name
                     break
+
+        if primary_iface is None:
+            active_iface = None
+        if primary_iface is None or (gateway_info.get('interface') and gateway_info['interface'] != active_iface):
+            gateway_info = {'interface': active_iface, 'ipv4': None, 'mac': None}
+        self._primary_ip = (primary_iface or {}).get('ipv4')
+        self._primary_name = active_iface
+        if gateway_info.get('ipv4'):
+            try:
+                router = identify_router(gateway_info.get('ipv4'), gateway_info.get('mac'))
+                gateway_info['mac'] = router.get('mac') or gateway_info.get('mac')
+                gateway_info['vendor'] = router.get('vendor') or gateway_info.get('vendor')
+                gateway_info['model'] = router.get('model')
+                gateway_info['identified_by'] = router.get('sources')
+                gateway_info['http_server'] = router.get('http_server')
+            except Exception:
+                pass
 
         wifi_dev = getattr(self.adapter, "get_wifi_device_name", lambda: None)() or "en0"
         active_type = primary_iface.get("type") if primary_iface else self._guess_interface_type(active_iface or "")
@@ -153,7 +164,7 @@ class LanScanner:
 
         dhcp_info = self.get_dhcp_info(active_iface)
         dns_info = self.get_dns_configuration()
-        dns_benchmark = self.benchmark_dns(dns_info.get("resolvers", []))
+        dns_benchmark = self.benchmark_dns(dns_info.get("resolvers", [])) if primary_iface else {}
         
         # 5. Scoperta esaustiva dispositivi LAN: ARP, Gateway, DNS, DHCP, mDNS, Sweep TCP, NetBIOS
         this_device, lan_devices = self.discover_lan_devices(
@@ -1001,8 +1012,8 @@ class LanScanner:
         """Estrae i server DNS configurati nel sistema operativo."""
         if is_windows() and hasattr(self, "adapter") and hasattr(self.adapter, "get_dns_configuration"):
             try:
-                ad_dns = self.adapter.get_dns_configuration()
-                if ad_dns and ad_dns.get("resolvers"):
+                ad_dns = self.adapter.get_dns_configuration(interface_name=getattr(self, '_primary_name', None))
+                if ad_dns is not None:
                     return ad_dns
             except Exception:
                 pass
@@ -1088,7 +1099,11 @@ class LanScanner:
         def probe_domain(dom: str) -> Optional[float]:
             t0 = time.perf_counter()
             try:
-                socket.getaddrinfo(dom, 80, socket.AF_INET, socket.SOCK_STREAM)
+                import dns.resolver
+                resolver = dns.resolver.Resolver(configure=False)
+                resolver.nameservers = configured_resolvers
+                resolver.timeout = resolver.lifetime = 0.5
+                resolver.resolve(dom, 'A', source=getattr(self, '_primary_ip', None))
                 return (time.perf_counter() - t0) * 1000.0
             except Exception:
                 return None
@@ -1106,7 +1121,8 @@ class LanScanner:
             })
 
         # 2. Test validazione DNSSEC con dnspython e controllo runtime di coerenza
-        dnssec_res = validate_dnssec_resolvers(configured_resolvers)
+        dnssec_res = validate_dnssec_resolvers(configured_resolvers, timeout=0.5,
+                                             source=getattr(self, '_primary_ip', None))
         results["dnssec_report"] = dnssec_res
         results["dnssec_validation_active"] = dnssec_res.get("dnssec_validation_active", False)
         results["resolvers_dnssec"] = dnssec_res.get("resolvers", [])
@@ -1242,7 +1258,8 @@ class LanScanner:
         found: Dict[str, str] = {}
         try:
             import zeroconf
-            zc = zeroconf.Zeroconf()
+            primary_ip = getattr(self, '_primary_ip', None)
+            zc = zeroconf.Zeroconf(interfaces=[primary_ip]) if primary_ip else zeroconf.Zeroconf()
             services = [
                 '_http._tcp.local.', '_smb._tcp.local.', '_googlecast._tcp.local.',
                 '_airplay._tcp.local.', '_spotify-connect._tcp.local.', '_ipp._tcp.local.',
@@ -1271,34 +1288,52 @@ class LanScanner:
 
     def sweep_local_subnet(self, local_ip: str, netmask: Optional[str]) -> List[Dict[str, Any]]:
         """
-        Esegue uno sweep multithreaded non invasivo della subnet locale (/24 completa)
-        per popolare l'ARP table e scoprire i dispositivi online.
+        Probe the primary subnet with 64 workers and a bounded TCP budget.
+        Prioritize ARP entries and limit large networks to 1024 new candidates.
         """
         discovered = []
         if not local_ip:
             return discovered
 
-        parts = local_ip.split(".")
-        if len(parts) != 4:
+        network = local_network(local_ip, netmask)
+        if network is None or is_virtual_or_secondary_interface('', '', local_ip):
             return discovered
-
-        prefix = f"{parts[0]}.{parts[1]}.{parts[2]}"
-        target_ips = [f"{prefix}.{octet}" for octet in range(1, 255) if f"{prefix}.{octet}" != local_ip]
+        # ARP candidates first; cap large LANs without inventing a wider subnet.
+        seeds = []
+        for entry in self.get_arp_table():
+            try:
+                ip = entry.get('ip')
+                addr = ipaddress.IPv4Address(ip)
+                if (ip != local_ip and addr in network and ip not in seeds and
+                        (network.prefixlen >= 31 or addr not in (network.network_address, network.broadcast_address))):
+                    seeds.append(ip)
+            except (ValueError, TypeError):
+                pass
+        target_ips = list(dict.fromkeys(seeds + [str(ip) for ip in
+            itertools.islice(network.hosts(), 1024) if str(ip) != local_ip]))
+        deadline = time.monotonic() + (3.0 if is_windows() else 4.0)
 
         def probe_host(ip: str):
-            for port in (80, 443, 53, 445, 8080, 22):
+            # Two SYN attempts populate the OS ARP cache even when a host drops
+            # TCP; closed ports prove liveness as well as open ports.
+            for port in (80, 443):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return None
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(0.12)
+                s.settimeout(min(0.15, remaining))
                 try:
+                    s.bind((local_ip, 0))
                     res = s.connect_ex((ip, port))
-                    s.close()
-                    if res == 0:
+                    if res in (0, 61, 111, 10061):  # refusal also proves a live host
                         return ip
                 except Exception:
                     pass
+                finally:
+                    s.close()
             return None
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=64) as executor:
             active_ips = list(filter(None, executor.map(probe_host, target_ips)))
 
         def _resolve_sweep_ip(ip_addr: str) -> Dict[str, Any]:
@@ -1358,6 +1393,11 @@ class LanScanner:
         }
 
         device_map: Dict[str, Dict[str, Any]] = {}
+        if not this_ip or is_virtual_or_secondary_interface(
+                p_if.get('name'), p_if.get('description'), this_ip):
+            return this_device, []
+        network = local_network(this_ip, p_if.get('netmask'))
+        self._primary_ip = this_ip
         MAC_SOURCE_PRIORITY = {
             "sysctl": 1,
             "arp_an": 2,
@@ -1372,6 +1412,12 @@ class LanScanner:
         def record_candidate(ip: str, source: str, mac: Optional[str] = None, hostname: Optional[str] = None, mac_source: Optional[str] = None):
             if not ip or ip == this_ip or ip in ("127.0.0.1", "::1", "fe80::1") or ip.startswith("127.") or ip.startswith("169.254."):
                 return
+            if network is not None and ':' not in ip:
+                try:
+                    if ipaddress.IPv4Address(ip) not in network:
+                        return
+                except ValueError:
+                    return
             valid_mac = mac if (mac and not is_placeholder_mac(mac)) else None
             effective_src = mac_source if valid_mac else None
 

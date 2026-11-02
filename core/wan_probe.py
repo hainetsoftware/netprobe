@@ -16,6 +16,7 @@ import time
 import urllib.request
 import urllib.error
 from typing import Dict, Any, Optional, Tuple
+from core.interfaces import is_virtual_or_secondary_interface
 
 
 class WanProbe:
@@ -42,7 +43,7 @@ class WanProbe:
         nat_analysis = self.analyze_nat_type(local_ip, gateway_ip)
         
         # 5. Rilevamento UPnP / NAT-PMP sul router
-        upnp_pmp = self.probe_upnp_and_nat_pmp(gateway_ip)
+        upnp_pmp = self.probe_upnp_and_nat_pmp(gateway_ip, local_ip=local_ip)
         
         # 6. Rilevamento Proxy / VPN / Datacenter
         proxy_vpn = self.detect_proxy_or_vpn(wan_geo, reverse_dns)
@@ -324,13 +325,19 @@ class WanProbe:
 
         return (mapped_ip, mapped_port) if mapped_ip else None
 
-    def probe_upnp_and_nat_pmp(self, gateway_ip: Optional[str]) -> Dict[str, Any]:
+    def probe_upnp_and_nat_pmp(self, gateway_ip: Optional[str], local_ip: Optional[str] = None) -> Dict[str, Any]:
         """Verifica se il router ha attivi i protocolli di apertura automatica porte (UPnP o NAT-PMP)."""
         res = {
             "upnp_igd_available": False,
             "upnp_server": None,
             "nat_pmp_available": False
         }
+        res['upnp_status_text'] = 'Nessuna risposta (UPnP non rilevato)'
+        res['nat_pmp_status_text'] = 'Nessuna risposta (NAT-PMP non rilevato)'
+        # No unbound multicast: the caller supplies the eligible primary address.
+        if not local_ip or is_virtual_or_secondary_interface('', '', local_ip):
+            return res
+        deadline = time.monotonic() + 1.5
 
         # 1. UPnP SSDP Discovery (multicast 239.255.255.250:1900)
         ssdp_request = (
@@ -343,8 +350,10 @@ class WanProbe:
         ).encode("utf-8")
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(0.8)
         try:
+            sock.bind((local_ip, 0))
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(local_ip))
+            sock.settimeout(max(0.001, min(0.8, deadline - time.monotonic())))
             sock.sendto(ssdp_request, ("239.255.255.250", 1900))
             data, _ = sock.recvfrom(2048)
             text = data.decode("utf-8", errors="replace")
@@ -359,10 +368,11 @@ class WanProbe:
             sock.close()
 
         # 2. NAT-PMP Probe (porta UDP 5351 del Gateway)
-        if gateway_ip:
+        if gateway_ip and time.monotonic() < deadline:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.settimeout(0.6)
             try:
+                sock.bind((local_ip, 0))
+                sock.settimeout(max(0.001, min(0.6, deadline - time.monotonic())))
                 # Opcode 0 = request external IP
                 packet = b"\x00\x00"
                 sock.sendto(packet, (gateway_ip, 5351))

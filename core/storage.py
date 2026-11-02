@@ -1,6 +1,7 @@
 """Private, transactional SQLite cache. Connections never cross worker threads."""
 import json
 import os
+import subprocess
 from pathlib import Path
 import sys
 import secrets
@@ -49,6 +50,21 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_subnet ON telemetry_runs(subnet_prefix,
 
 
 class StorageManager:
+    def open_storage_dir(self) -> bool:
+        """Reveal the database directory in the native file manager."""
+        try:
+            folder = self.db_path.parent
+            folder.mkdir(parents=True, exist_ok=True)
+            if sys.platform == 'darwin':
+                subprocess.run(['open', str(folder)], check=True)
+            elif sys.platform == 'win32':
+                os.startfile(str(folder))
+            else:
+                subprocess.run(['xdg-open', str(folder)], check=True)
+            return True
+        except Exception:
+            return False
+
     def __init__(self, db_path=None, timeout=0.5):
         self.timeout = timeout
         self.db_path = Path(db_path) if db_path else data_directory() / 'netprobe.db'

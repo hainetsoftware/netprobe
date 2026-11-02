@@ -171,6 +171,8 @@ def main():
     )
 
     parser.add_argument("--tui", action="store_true", help="Avvia la dashboard interattiva moderna a schermo intero (default se nessun flag è specificato)")
+    parser.add_argument("--open-db", action="store_true",
+                        help="Open local SQLite database folder in system file manager and exit")
     parser.add_argument("--non-interactive", "--cli", action="store_true", dest="non_interactive", help="Esegui in modalità non-interattiva / headless nel terminale")
     parser.add_argument("--quick", action="store_true", help="Scansione veloce (salta il test di banda approfondito)")
     parser.add_argument("--full", action="store_true", help="Scansione approfondita con misurazione banda e bufferbloat")
@@ -179,6 +181,11 @@ def main():
     parser.add_argument("--export", type=str, metavar="FILE", help="Esporta il report diagnostico in file JSON o HTML")
 
     args = parser.parse_args()
+    if args.open_db:
+        from core.storage import StorageManager
+        if not StorageManager().open_storage_dir():
+            print('[NetProbe] Impossibile aprire la cartella del database.', file=sys.stderr)
+        sys.exit(0)
     from core.bootstrap import ensure_dependencies
     from core.privileges import announce_restrictions
     ensure_dependencies()

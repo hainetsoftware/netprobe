@@ -22,7 +22,8 @@ def validate_dnssec_resolvers(
     broken_zone: str = "sigfail.verteiltesysteme.net",
     fallback_broken_zone: str = "dnssec-failed.org",
     control_servers: Optional[List[str]] = None,
-    timeout: float = 2.0
+    timeout: float = 2.0,
+    source: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Verifica la convalida crittografica DNSSEC per ciascun resolver configurato.
@@ -50,11 +51,11 @@ def validate_dnssec_resolvers(
             rc.set_flags(dns.flags.RD | dns.flags.AD)
 
             # Il controllo deve risolvere la zona valida
-            rc.resolve(good_zone, "A")
+            rc.resolve(good_zone, "A", **({'source': source} if source else {}))
 
             # E DEVE fallire (SERVFAIL / NoNameservers) sulla zona corrotta
             try:
-                rc.resolve(broken_zone, "A")
+                rc.resolve(broken_zone, "A", **({'source': source} if source else {}))
             except (dns.resolver.NoNameservers, dns.resolver.NXDOMAIN, dns.resolver.LifetimeTimeout):
                 control_ok = True
                 control_tested_server = c_ip
@@ -73,7 +74,7 @@ def validate_dnssec_resolvers(
                 rc.timeout = timeout
                 rc.lifetime = timeout
                 try:
-                    rc.resolve(fallback_broken_zone, "A")
+                    rc.resolve(fallback_broken_zone, "A", **({'source': source} if source else {}))
                 except (dns.resolver.NoNameservers, dns.resolver.NXDOMAIN, dns.resolver.LifetimeTimeout):
                     control_ok = True
                     broken_zone = fallback_broken_zone
@@ -94,7 +95,7 @@ def validate_dnssec_resolvers(
         ad_flag = False
         good_ans_ips = []
         try:
-            ans = r.resolve(good_zone, "A")
+            ans = r.resolve(good_zone, "A", **({'source': source} if source else {}))
             good_resolved = True
             if ans.response and hasattr(ans.response, "flags"):
                 ad_flag = bool(ans.response.flags & dns.flags.AD)
@@ -106,7 +107,7 @@ def validate_dnssec_resolvers(
         broken_resolved = False
         broken_ans_ips = []
         try:
-            ans_b = r.resolve(broken_zone, "A")
+            ans_b = r.resolve(broken_zone, "A", **({'source': source} if source else {}))
             broken_resolved = True
             broken_ans_ips = [rr.address for rr in ans_b if hasattr(rr, "address")]
         except (dns.resolver.NoNameservers, dns.resolver.NXDOMAIN, dns.resolver.LifetimeTimeout):
@@ -117,7 +118,7 @@ def validate_dnssec_resolvers(
         # Se broken_zone primaria non ha generato blocco né risposta, tenta fallback_broken_zone
         if not broken_blocked and not broken_resolved:
             try:
-                ans_b = r.resolve(fallback_broken_zone, "A")
+                ans_b = r.resolve(fallback_broken_zone, "A", **({'source': source} if source else {}))
                 broken_resolved = True
                 broken_ans_ips = [rr.address for rr in ans_b if hasattr(rr, "address")]
             except (dns.resolver.NoNameservers, dns.resolver.NXDOMAIN, dns.resolver.LifetimeTimeout):

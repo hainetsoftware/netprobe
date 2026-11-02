@@ -2,6 +2,7 @@
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 from textual.widgets import Label
 from core.storage import StorageManager
 from tui.app import NetProbeTUIApp
@@ -9,6 +10,22 @@ from ui.menu import ManagementMenu
 
 
 class ManagementTests(unittest.IsolatedAsyncioTestCase):
+    async def test_open_db_lowercase_uppercase_and_button(self):
+        with tempfile.TemporaryDirectory() as directory:
+            storage = StorageManager(Path(directory) / 'netprobe.db')
+            app = NetProbeTUIApp(storage=storage)
+            with patch.object(storage, 'open_storage_dir', return_value=True) as opener:
+                async with app.run_test(size=(100, 60)) as pilot:
+                    await pilot.press('m', 'o', 'O')
+                    await pilot.click('#manage-open-db')
+                    self.assertEqual(opener.call_count, 3)
+                    self.assertIn('Cartella aperta nel file manager.',
+                                  str(app.screen.query_one('#management-message', Label).render()))
+                    opener.return_value = False
+                    await pilot.press('o')
+                    self.assertIn('Impossibile aprire',
+                                  str(app.screen.query_one('#management-message', Label).render()))
+
     async def test_open_menu_refreshes_live_clean_and_congested_counts(self):
         from core.ingestion import ingest_report
         from tests.test_storage import latest_report

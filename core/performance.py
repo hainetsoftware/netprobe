@@ -751,16 +751,22 @@ class PerformanceTester:
                 }
             }
 
-        for target in active_targets:
+        def measure_target(target):
             name = target["name"]
             host = target["host"]
             metrics = self.ping_host(host, count=6)
-            results[name] = {
+            return name, {
                 "name": name,
                 "host": host,
                 "type": target["type"],
                 **metrics
             }
+
+        if is_windows() and active_targets:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(active_targets)) as pool:
+                results.update(pool.map(measure_target, active_targets))
+        else:
+            results.update(map(measure_target, active_targets))
 
         return results
 
@@ -781,9 +787,10 @@ class PerformanceTester:
             if code == 0 or "packets transmitted" in out:
                 rtts, loss_pct = self._parse_bsd_ping(out)
         elif is_windows():
-            code, out, _ = run_cmd(["ping", "-n", str(count), "-w", "1000", host], timeout=6.0)
-            if code == 0 or "Packets:" in out:
-                rtts, loss_pct = self._parse_windows_ping(out)
+            from core.windows_ping import echo_burst
+            outputs, sent = echo_burst(host, count, 3.0, run_cmd)
+            rtts = [rtt for out in outputs for rtt in self._parse_windows_ping(out)[0]]
+            loss_pct = 100.0 * (sent - len(rtts)) / sent if sent else 100.0
 
         if not rtts:
             rtts, loss_pct = self._tcp_ping(host, count=count)
@@ -1487,7 +1494,7 @@ class PerformanceTester:
     def _parse_windows_ping(self, output: str) -> Tuple[List[float], float]:
         rtts = []
         loss = 0.0
-        for m in re.finditer(r"(?:time|durata|tempo)?\s*[=<]\s*([0-9\.]+)\s*ms", output, re.IGNORECASE):
+        for m in re.finditer(r"(?:time|durata|tempo)\s*[=<]\s*([0-9\.]+)\s*ms", output, re.IGNORECASE):
             try:
                 rtts.append(float(m.group(1)))
             except ValueError:

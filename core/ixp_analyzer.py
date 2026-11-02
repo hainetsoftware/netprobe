@@ -1070,15 +1070,15 @@ def build_topological_flow(
     }
 
 
-def lookup_asn_name(asn: int) -> str:
+def lookup_asn_name(asn: int, timeout_s: float = 1.0) -> str:
     """Risolve dinamicamente il nome dell'organizzazione AS via Team Cymru DNS con cache in memoria."""
     if asn in _ASN_NAME_CACHE:
         return _ASN_NAME_CACHE[asn]
     try:
         import dns.resolver
         res = dns.resolver.Resolver()
-        res.timeout = 1.0
-        res.lifetime = 1.0
+        res.timeout = timeout_s
+        res.lifetime = timeout_s
         ans = res.resolve(f"AS{asn}.asn.cymru.com", "TXT")
         for rdata in ans:
             txt = "".join([b.decode("utf-8", errors="replace") if isinstance(b, bytes) else str(b) for b in rdata.strings])
@@ -1096,7 +1096,7 @@ def lookup_asn_name(asn: int) -> str:
     return fallback
 
 
-def lookup_ip_asn(ip_str: str) -> Tuple[Optional[int], Optional[str]]:
+def lookup_ip_asn(ip_str: str, timeout_s: float = 1.0) -> Tuple[Optional[int], Optional[str]]:
     """
     Risolve dinamicamente ASN e nome dell'organizzazione di un IP pubblico
     tramite Team Cymru DNS origin con caching per prefisso /24.
@@ -1119,15 +1119,15 @@ def lookup_ip_asn(ip_str: str) -> Tuple[Optional[int], Optional[str]]:
         rev = ".".join(reversed(ip_str.split("."))) + ".origin.asn.cymru.com"
         import dns.resolver
         res = dns.resolver.Resolver()
-        res.timeout = 1.0
-        res.lifetime = 1.0
+        res.timeout = timeout_s
+        res.lifetime = timeout_s
         ans = res.resolve(rev, "TXT")
         for rdata in ans:
             txt = "".join([b.decode("utf-8", errors="replace") if isinstance(b, bytes) else str(b) for b in rdata.strings])
             parts = [p.strip() for p in txt.split("|")]
             if parts and parts[0].isdigit():
                 asn_num = int(parts[0])
-                asn_name = lookup_asn_name(asn_num)
+                asn_name = lookup_asn_name(asn_num, timeout_s=timeout_s)
                 _ASN_PREFIX_CACHE[prefix_key] = (asn_num, asn_name)
                 return asn_num, asn_name
     except Exception:
@@ -1143,7 +1143,7 @@ def lookup_ip_asn(ip_str: str) -> Tuple[Optional[int], Optional[str]]:
     return None, None
 
 
-def lookup_ip_rdns(ip_str: str, timeout_s: float = 1.0) -> Optional[str]:
+def lookup_ip_rdns(ip_str: str, timeout_s: float = 1.0, dns_only: bool = False) -> Optional[str]:
     """Risolve dinamicamente l'hostname PTR di un IP con timeout limitato (<= 1.0s)."""
     if not ip_str or ip_str == "*":
         return None
@@ -1172,6 +1172,10 @@ def lookup_ip_rdns(ip_str: str, timeout_s: float = 1.0) -> Optional[str]:
     except Exception:
         pass
 
+    if dns_only:
+        _RDNS_CACHE[ip_str] = None
+        return None
+
     try:
         orig = socket.getdefaulttimeout()
         socket.setdefaulttimeout(timeout_s)
@@ -1195,7 +1199,8 @@ def build_access_profile_from_hops(
     wan_asn: Optional[int] = None,
     dest_asn: Optional[int] = None,
     ixp_evidence: Optional[Dict[str, Any]] = None,
-    matched_ixp: Optional[Dict[str, Any]] = None
+    matched_ixp: Optional[Dict[str, Any]] = None,
+    resolve_asn: bool = True
 ) -> Dict[str, Any]:
     """
     Costruisce l'access_profile salto per salto con pavimenti (floors), incrementi
@@ -1256,7 +1261,7 @@ def build_access_profile_from_hops(
         # Risoluzione ASN dinamica per hop pubblici
         hop_asn = h.get("asn")
         hop_asn_name = h.get("asn_name")
-        if hop_asn is None and responds and not is_priv and not is_cgnat:
+        if resolve_asn and hop_asn is None and responds and not is_priv and not is_cgnat:
             hop_asn, hop_asn_name = lookup_ip_asn(primary_ip)
             h["asn"] = hop_asn
             h["asn_name"] = hop_asn_name
@@ -1548,48 +1553,112 @@ class IXPAnalyzer:
 
         results = {}
         futures_map = {}
+        if not targets:
+            return dict(merge_multi_target_paths({}), raw_paths={})
+        deadline = time.monotonic() + timeout_s
+        trace_deadline = deadline - min(3.0, timeout_s / 4)
+        silent_hops_detected = set()
 
         is_test_env = bool(os.environ.get("NETPROBE_SPEED_HOST") or os.environ.get("NETPROBE_QUICK_TRACEROUTE"))
         max_hops = 3 if is_test_env else 12
-        probes = 1 if is_test_env else (1 if is_windows() else 3)
+        probes = 1 if is_test_env else 3
+
+        # Establish the shared silent-hop set before secondary paths start.
+        first = targets[0]
+        primary_deadline = time.monotonic() + max(0, trace_deadline - time.monotonic()) / 2
+        primary = self._measure_cached_profile(first['ip'], max_hops, probes,
+                                              silent_hops_detected, False, primary_deadline)
+        results[first['id']] = primary.get('hops') or []
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(targets))) as pool:
-            for t in targets:
-                fut = pool.submit(self.measure_access_profile, t["ip"], max_hops=max_hops, probes=probes)
+            for t in targets[1:]:
+                fut = pool.submit(self._measure_cached_profile, t['ip'], max_hops, probes,
+                                  silent_hops_detected, True, trace_deadline)
                 futures_map[fut] = t
 
-            done, not_done = concurrent.futures.wait(futures_map.keys(), timeout=timeout_s)
+            done, not_done = concurrent.futures.wait(futures_map.keys(), timeout=max(0, trace_deadline - time.monotonic()))
             for fut in not_done:
                 fut.cancel()
 
-            for fut in done:
+            for fut in futures_map:
                 t_info = futures_map[fut]
                 try:
                     prof = fut.result()
                     hops = prof.get("hops") or []
-                    for h in hops:
-                        hip = h.get("ip")
-                        if hip and hip != "*":
-                            try:
-                                ip_obj = ipaddress.ip_address(hip)
-                                if not ip_obj.is_private and not ip_obj.is_loopback:
-                                    if h.get("asn") is None:
-                                        h_asn, h_name = lookup_ip_asn(hip)
-                                        h["asn"] = h_asn
-                                        h["asn_name"] = h_name
-                                    if h.get("rdns") is None:
-                                        h["rdns"] = lookup_ip_rdns(hip, timeout_s=0.5)
-                            except ValueError:
-                                pass
-                        if h.get("rdns"):
-                            h["rdns_parsed"] = parse_rdns_metro_and_role(h.get("rdns"))
                     results[t_info["id"]] = hops
                 except Exception:
                     results[t_info["id"]] = []
 
+        # Enrich unique public hops concurrently within the remaining run budget.
+        public_ips = set()
+        for hops in results.values():
+            for h in hops:
+                try:
+                    ip = ipaddress.ip_address(h.get('ip', '*'))
+                    if not ip.is_private and not ip.is_loopback:
+                        public_ips.add(str(ip))
+                except ValueError:
+                    pass
+
+        def enrich(ip):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            budget = min(0.4, remaining / 3)
+            asn, name = lookup_ip_asn(ip, timeout_s=budget)
+            rdns = lookup_ip_rdns(ip, timeout_s=budget, dns_only=True)
+            return {'asn': asn, 'asn_name': name, 'rdns': rdns,
+                    'rdns_parsed': parse_rdns_metro_and_role(rdns) if rdns else None}
+
+        if public_ips:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(32, len(public_ips))) as pool:
+                metadata = dict(zip(public_ips, pool.map(enrich, public_ips)))
+            for hops in results.values():
+                for h in hops:
+                    if metadata.get(h.get('ip')):
+                        h.update(metadata[h['ip']])
+
         merged = merge_multi_target_paths(results)
         merged["raw_paths"] = results
         return merged
+
+    def _measure_cached_profile(self, target, max_hops, probes, silent_hops, secondary, deadline):
+        """Trace within a run deadline, reducing probes at known silent TTLs."""
+        hops = []
+        consecutive_silent = 0
+        if os.environ.get('NETPROBE_SPEED_HOST'):
+            return build_access_profile_from_hops(hops, target=target)
+        for ttl in range(1, max_hops + 1):
+            if time.monotonic() >= deadline:
+                break
+            cached = ttl in silent_hops
+            samples = []
+            for _ in range(1 if cached else probes):
+                if time.monotonic() >= deadline:
+                    break
+                samples.extend(self._icmp_ttl_stepping_traceroute(
+                    target, max_hops=ttl, start_hop=ttl, timeout_s=0.5, deadline=deadline))
+            if not samples:
+                break
+            responsive = [sample for sample in samples if sample.get('ip') not in (None, '*')]
+            if responsive:
+                hop = dict(responsive[0])
+                hop['ips'] = list(dict.fromkeys(s['ip'] for s in responsive))
+                hop['rtts'] = [r for s in responsive for r in s.get('rtts', [])]
+                hop['rtt_ms'] = min(hop['rtts']) if hop['rtts'] else None
+                consecutive_silent = 0
+            else:
+                hop = samples[0]
+                if not secondary:
+                    silent_hops.add(ttl)
+                consecutive_silent = consecutive_silent + 1 if ttl > 4 else 0
+            hops.append(hop)
+            if any(s.get('ip') == target for s in responsive):
+                break
+            if secondary and consecutive_silent >= 3:
+                break
+        # Network metadata is resolved by the caller after the probe phase.
+        return build_access_profile_from_hops(hops, target=target, resolve_asn=False)
 
     def analyze_ixp_and_bng(
         self,
@@ -1631,7 +1700,7 @@ class IXPAnalyzer:
         if full_scan and not is_test_env:
             if progress_cb:
                 progress_cb("Esecuzione traceroute multi-target paralleli (Cloudflare, Google, AWS, IXP)...", 15)
-            multi_target_analysis = self.probe_parallel_targets(timeout_s=12.0)
+            multi_target_analysis = self.probe_parallel_targets(timeout_s=8.0 if is_windows() else 12.0)
 
         # 3. Access Profile Primary Traceroute
         if progress_cb:
@@ -1832,7 +1901,9 @@ class IXPAnalyzer:
 
         return hops
 
-    def _icmp_ttl_stepping_traceroute(self, target: str, max_hops: int = 20) -> List[Dict[str, Any]]:
+    def _icmp_ttl_stepping_traceroute(self, target: str, max_hops: int = 20,
+                                    start_hop: int = 1, timeout_s: float = 0.5,
+                                    deadline: Optional[float] = None) -> List[Dict[str, Any]]:
         """
         Fallback traceroute non-privilegiato (userspace e zero root) tramite loop di TTL stepping ICMP.
         Invia pacchetti ping incrementando il TTL da 1 a max_hops (max 20).
@@ -1844,10 +1915,13 @@ class IXPAnalyzer:
         reply_re = re.compile(r"(?:bytes from|From|Reply from|Risposta da)\s+(?:[^\s(]+\s+\()?([0-9\.]+)", re.IGNORECASE)
         time_re = re.compile(r"(?:time|tempo|durata)?\s*[=<]\s*(\d+(?:\.\d+)?)\s*ms", re.IGNORECASE)
 
-        for ttl in range(1, max_hops + 1):
+        for ttl in range(start_hop, max_hops + 1):
+            remaining = min(timeout_s, deadline - time.monotonic()) if deadline else timeout_s
+            if remaining <= 0:
+                break
             t0 = time.perf_counter()
             if is_windows():
-                cmd = ["ping", "-n", "1", "-w", "800", "-i", str(ttl), target]
+                cmd = ["ping", "-n", "1", "-w", str(max(1, int(remaining * 1000))), "-i", str(ttl), target]
             elif is_macos():
                 if use_m_flag:
                     cmd = ["ping", "-n", "-c", "1", "-m", str(ttl), "-W", "500", "-t", "1", target]
@@ -1863,7 +1937,7 @@ class IXPAnalyzer:
 
             if is_windows():
                 try:
-                    c, out, _ = run_cmd(cmd, timeout=1.2)
+                    c, out, _ = run_cmd(cmd, timeout=remaining)
                     out_lower = out.lower()
                     if "request timed out" in out_lower or "richiesta scaduta" in out_lower:
                         router_ip = None
@@ -1898,7 +1972,7 @@ class IXPAnalyzer:
                             has_sb = False
 
                     start_wait = time.perf_counter()
-                    timeout_hop = 0.35  # max 350ms per hop non responsivo
+                    timeout_hop = min(0.5, remaining)
 
                     while (time.perf_counter() - start_wait) < timeout_hop:
                         chunk = b""
@@ -1972,7 +2046,7 @@ class IXPAnalyzer:
                     "rtts": [],
                     "rtt_ms": None
                 })
-                if ttl > 3:
+                if ttl > 4:
                     consec_silent += 1
                     if consec_silent >= 3:
                         break
@@ -2004,7 +2078,8 @@ class IXPAnalyzer:
                 tcp_permitted = True
 
         if is_windows():
-            cmd = ["tracert", "-d", "-w", "800", "-h", str(max_hops), target]
+            max_hops = min(max_hops, 15)
+            cmd = ["tracert", "-d", "-w", "500", "-h", str(max_hops), target]
         elif is_macos():
             if tcp_permitted:
                 cmd = ["traceroute", "-P", "TCP", "-p", "80", "-n", "-m", str(max_hops), "-q", str(probes), "-w", "1", target]
@@ -2043,7 +2118,8 @@ class IXPAnalyzer:
                 tcp_permitted = True
 
         if is_windows():
-            cmd = ["tracert", "-d", "-w", "800", "-h", str(max_hops), target]
+            max_hops = min(max_hops, 15)
+            cmd = ["tracert", "-d", "-w", "500", "-h", str(max_hops), target]
         elif is_macos():
             if tcp_permitted:
                 cmd = ["traceroute", "-P", "TCP", "-p", "80", "-n", "-m", str(max_hops), "-q", "1", "-w", "1", target]
@@ -2165,7 +2241,7 @@ class IXPAnalyzer:
     def _parse_ping_times(out: str) -> List[float]:
         times = []
         for line in out.splitlines():
-            m = re.search(r"(?:time|tempo|durata)?\s*[=<]\s*([\d\.]+)\s*ms", line, re.IGNORECASE)
+            m = re.search(r"(?:time|tempo|durata)\s*[=<]\s*([\d\.]+)\s*ms", line, re.IGNORECASE)
             if m:
                 try:
                     times.append(float(m.group(1)))
@@ -2177,10 +2253,9 @@ class IXPAnalyzer:
         """Burst di ping senza root. Ritorna (rtts, pacchetti_inviati_richiesti)."""
         deadline_s = max(2.0, deadline_s)
         if is_windows():
-            count = min(count, 12)  # intervallo fisso ~1 s: tiene il tempo sotto controllo
-            cmd = ["ping", "-n", str(count), "-w", "800", ip]
-            _, out, _ = run_cmd(cmd, timeout=count + 4.0)
-            return self._parse_ping_times(out), count
+            from core.windows_ping import echo_burst
+            outputs, sent = echo_burst(ip, min(count, 12), deadline_s, run_cmd)
+            return [rtt for out in outputs for rtt in self._parse_ping_times(out)], sent
         # Intervalli sotto 0.2 s richiedono root su Linux (e a volte su macOS): fallback progressivo
         for interval in ("0.1", "0.2", "1"):
             n = count if interval != "1" else min(count, 8)

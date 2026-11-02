@@ -13,6 +13,7 @@ import datetime
 from typing import Dict, List, Any, Optional, Tuple
 
 from core.adapters.base import OSAdapter
+from core.interfaces import is_virtual_or_secondary_interface
 from core.oui_data import lookup_vendor, is_placeholder_mac
 from core.platform_info import run_cmd, run_cmd_shell, is_windows
 
@@ -521,6 +522,7 @@ class WindowsAdapter(OSAdapter):
             $v6 = ($ips | Where-Object AddressFamily -eq 'IPv6').IPAddress
             [PSCustomObject]@{
                 Name = $alias
+                Description = $_.InterfaceDescription
                 Mac = $mac
                 Status = $status
                 Speed = $speed
@@ -543,6 +545,7 @@ class WindowsAdapter(OSAdapter):
                     if_type = "Wi-Fi" if "wi-fi" in name.lower() or "wireless" in name.lower() else "Ethernet"
                     interfaces[name] = {
                         "name": name,
+                        "description": item.get('Description'),
                         "is_up": is_up,
                         "is_running": is_up,
                         "is_loopback": "loopback" in name.lower(),
@@ -823,7 +826,7 @@ class WindowsAdapter(OSAdapter):
     # -----------------------------------------------------------------------
     # DNS Configuration
     # -----------------------------------------------------------------------
-    def get_dns_configuration(self) -> Dict[str, Any]:
+    def get_dns_configuration(self, interface_name=None) -> Dict[str, Any]:
         """Estrae la configurazione DNS di sistema (resolvers, search domains)."""
         dns_conf = {
             "resolvers": [],
@@ -845,7 +848,14 @@ class WindowsAdapter(OSAdapter):
                     curr_ptr = ctypes.cast(buf, ctypes.POINTER(IP_ADAPTER_ADDRESSES))
                     while curr_ptr:
                         ad = curr_ptr.contents
-                        if ad.OperStatus == 1:
+                        addresses = []
+                        unicast = ad.FirstUnicastAddress
+                        while unicast:
+                            addresses.append(_sockaddr_to_ip(unicast.contents.Address.lpSockaddr))
+                            unicast = unicast.contents.Next
+                        eligible = not is_virtual_or_secondary_interface(
+                            ad.FriendlyName, ad.Description, next((ip for ip in addresses if ip and ':' not in ip), ''))
+                        if ad.OperStatus == 1 and eligible and (interface_name is None or ad.FriendlyName == interface_name):
                             if ad.DnsSuffix and ad.DnsSuffix not in dns_conf["search_domains"]:
                                 dns_conf["search_domains"].append(ad.DnsSuffix)
                             d_ptr = ad.FirstDnsServerAddress
@@ -864,8 +874,18 @@ class WindowsAdapter(OSAdapter):
             code, out, _ = run_cmd(["ipconfig", "/all"], timeout=3.0)
             if code == 0 and out:
                 in_dns = False
+                eligible = interface_name is None
                 for line in out.splitlines():
                     line_str = line.strip()
+                    if line and not line[0].isspace() and line_str.endswith(':'):
+                        eligible = (not is_virtual_or_secondary_interface(line_str, '', '') and
+                                    (interface_name is None or line_str.endswith(interface_name + ':')))
+                        in_dns = False
+                    if not eligible:
+                        continue
+                    if is_virtual_or_secondary_interface('', line_str, '') or re.search(r'\b169\.254\.', line_str):
+                        eligible = False
+                        continue
                     if "dns servers" in line_str.lower() or "server dns" in line_str.lower():
                         in_dns = True
                         parts = line_str.split(":", 1)
