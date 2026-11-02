@@ -2,7 +2,7 @@
 import json
 import os
 from pathlib import Path
-import platform
+import sys
 import secrets
 import sqlite3
 from contextlib import contextmanager
@@ -11,16 +11,15 @@ THEMES = ('midnight-slate', 'monochrome-light', 'oled-black', 'nordic-frost')
 
 
 def data_directory():
-    home = Path.home()
-    family = platform.system()
-    if family == 'Linux':
-        base = Path(os.environ.get('XDG_DATA_HOME') or home / '.local/share')
-        return (base if base.is_absolute() else home / '.local/share') / 'netprobe'
-    if family == 'Darwin':
-        return home / 'Library/Application Support/NetProbe'
-    if family == 'Windows' and os.environ.get('LOCALAPPDATA'):
-        return Path(os.environ['LOCALAPPDATA']) / 'NetProbe'
-    return home / '.netprobe'
+    xdg = os.environ.get('XDG_DATA_HOME')
+    if xdg:
+        return Path(xdg) / 'netprobe'
+    if sys.platform == 'darwin':
+        return Path.home() / 'Library/Application Support/NetProbe'
+    if sys.platform == 'win32':
+        local_app_data = os.environ.get('LOCALAPPDATA')
+        return Path(local_app_data) / 'NetProbe' if local_app_data else Path.home() / '.netprobe'
+    return Path.home() / '.local/share/netprobe'
 
 
 SCHEMA = '''
@@ -34,6 +33,7 @@ CREATE TABLE IF NOT EXISTS telemetry_runs (
  host_hash TEXT NOT NULL, os_family TEXT NOT NULL, kernel_release TEXT,
  interface_name TEXT NOT NULL, interface_type TEXT NOT NULL,
  public_asn INTEGER, public_isp TEXT, subnet_prefix TEXT, gateway_ip TEXT,
+ gateway_vendor TEXT, gateway_model TEXT, gateway_http_server TEXT,
  gateway_min_ms REAL, gateway_iqr_ms REAL,
  bng_ip TEXT, bng_floor_ms REAL, bng_spread_ms REAL, bng_iqr_ms REAL,
  bng_spike_fraction REAL, download_mbps REAL, upload_mbps REAL,
@@ -64,6 +64,11 @@ class StorageManager:
             columns = {row[1] for row in db.execute('PRAGMA table_info(telemetry_runs)')}
             if 'statistical_weight' not in columns:
                 db.execute('ALTER TABLE telemetry_runs ADD COLUMN statistical_weight REAL NOT NULL DEFAULT 1.0')
+            for column in ('gateway_vendor', 'gateway_model', 'gateway_http_server'):
+                if column not in columns:
+                    db.execute(f'ALTER TABLE telemetry_runs ADD COLUMN {column} TEXT')
+            # Reclassify old queueing observations before they can train idle baselines.
+            db.execute('UPDATE telemetry_runs SET is_congested=1 WHERE is_congested=0 AND (bufferbloat_delta_ms>35 OR gateway_iqr_ms>8)')
             db.execute('INSERT OR IGNORE INTO app_config(key,value) VALUES (?,?)',
                        ('host_salt', json.dumps(secrets.token_hex(32))))
 

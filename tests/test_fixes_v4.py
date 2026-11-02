@@ -190,9 +190,9 @@ class TestFixesV4(unittest.TestCase):
     # -------------------------------------------------------------
     def test_noise_flag_scope_throughput_vs_latency(self):
         est = NetworkEstimator()
-        lan_data = {"gateway": {"ipv4": "192.168.1.1"}}
+        lan_data = {"gateway": {"ipv4": "192.168.1.1"}, "primary_interface": {"mtu": 1492}}
         wan_data = {"public_ipv4": "82.91.100.1", "country": "IT", "country_code": "IT"}
-        ixp_data = {"hop2_bng": {"ip": "100.64.0.1", "min_ms": 12.0, "median_ms": 13.0, "iqr_ms": 1.0, "spike_fraction": 0.0}}
+        ixp_data = {"hop2_bng": {"ip": "100.64.0.1", "min_ms": 12.0, "median_ms": 13.0, "iqr_ms": 1.0, "spike_fraction": 0.0, "is_responsive": True}}
 
         # Case A: Noisy throughput (stability 70%), clean latency (spike_fraction 0, iqr 1.0, bb delta 0)
         perf_noisy_tp = {
@@ -213,7 +213,7 @@ class TestFixesV4(unittest.TestCase):
         # Whole verdict confidence must NOT be penalized by 0.8 when latency is clean
         conf_a = res_a["confidence_pct"]
 
-        # Case B: Both throughput and latency noisy (spike_fraction 15%, delta 120 ms)
+        # Case B: Both throughput and latency noisy, with congestion evidence held constant.
         perf_noisy_both = {
             "speed": {
                 "download_mbps": 40.0,
@@ -223,7 +223,7 @@ class TestFixesV4(unittest.TestCase):
                 "other_process_pct": 0.0
             },
             "primary_latency": {"min_ms": 12.5, "median_ms": 13.0, "iqr_ms": 8.0, "spike_fraction": 0.15},
-            "bufferbloat": {"download_delta_ms": 120.0, "upload_delta_ms": 120.0}
+            "bufferbloat": {"download_delta_ms": 2.0, "upload_delta_ms": 2.0}
         }
         res_b = est.estimate_physical_medium(lan_data, wan_data, perf_noisy_both, ixp_data)
         mq_b = res_b.get("measurement_quality", {})

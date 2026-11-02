@@ -54,13 +54,14 @@ class TestNewSignals(unittest.TestCase):
         self.assertNotIn("Asimmetria", _reasons(res))
 
     # --- Delta idle vs loaded ---
-    def test_loaded_delta_large_is_radio_or_shared(self):
+    def test_loaded_delta_large_does_not_identify_radio(self):
         perf = {"primary_latency": {"median_ms": 30.0},
                 "speed": {"download_mbps": 40.0, "upload_mbps": 10.0},
                 "bufferbloat": {"download_delta_ms": 120.0, "upload_delta_ms": 20.0}}
         res = self.est.estimate_physical_medium({}, {}, perf)
         self.assertIn("Delta latenza", _reasons(res))
-        self.assertGreater(res["scores_breakdown"]["Mobile Cellular (4G LTE / 5G Mobile Hotspot)"], 0.0)
+        self.assertEqual(res["scores_breakdown"]["Mobile Cellular (4G LTE / 5G Mobile Hotspot)"], 0.0)
+        self.assertEqual(res["scores_breakdown"]["FWA (Fixed Wireless Access / Eolo / Linkem)"], 0.0)
 
     def test_loaded_delta_zero_is_no_claim(self):
         perf = {"primary_latency": {"median_ms": 30.0},

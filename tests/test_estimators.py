@@ -6,6 +6,69 @@ class TestEstimators(unittest.TestCase):
     def setUp(self):
         self.est = NetworkEstimator()
 
+    def test_congested_tim_dsl_remains_fttc(self):
+        copper = 'FTTC / VDSL2 (Fibra Misto Rame)'
+        fwa = 'FWA (Fixed Wireless Access / Eolo / Linkem)'
+        for floor, iqr, delta in ((9, 30, 98), (34, 63, 39.5)):
+            with self.subTest(floor=floor, iqr=iqr):
+                result = self.est.estimate_physical_medium(
+                    {'gateway': {'ipv4': '192.168.1.1', 'vendor': 'ZTE', 'model': 'H388X'},
+                     'primary_interface': {'mtu': 1492}}, {'asn': 3269},
+                    {'speed': {'download_mbps': 90, 'upload_mbps': 15.4},
+                     'bufferbloat': {'download_delta_ms': delta, 'upload_delta_ms': 10}},
+                    {'hop2_bng': {'min_ms': floor, 'median_ms': floor + 32, 'spread_ms': 32,
+                                  'iqr_ms': iqr, 'is_responsive': True}})
+                self.assertEqual(result['predicted_medium'], copper)
+                self.assertGreater(result['scores_breakdown'][copper], result['scores_breakdown'][fwa])
+                self.assertFalse(result['insufficient_data'])
+                self.assertTrue(result['measurement_quality']['noisy_latency'])
+                self.assertTrue(result['measurement_quality']['is_congested'])
+                self.assertEqual(result['bng_hop']['min_ms'], floor)
+                self.assertIn('Dispersione di latenza elevata rilevata ma attribuita a congestione/bufferbloat; euristiche radio disattivate.',
+                              result['rationale'])
+
+    def test_congestion_guard_thresholds_and_idle_radio_evidence(self):
+        for perf, spikes, congested in (
+            ({'bufferbloat': {'download_delta_ms': 35}}, 0, False),
+            ({'bufferbloat': {'download_delta_ms': 35.01}}, 0, True),
+            ({'gateway_latency': {'iqr_ms': 8}}, 0, False),
+            ({'gateway_latency': {'iqr_ms': 8.01}}, 0, True),
+            ({}, .25, False), ({}, .26, True),
+        ):
+            with self.subTest(perf=perf, spikes=spikes):
+                result = self.est.estimate_physical_medium({}, {}, perf,
+                    {'hop2_bng': {'min_ms': 34, 'spread_ms': 32, 'iqr_ms': 30,
+                                  'spike_fraction': spikes, 'is_responsive': True}})
+                self.assertEqual(result['measurement_quality']['is_congested'], congested)
+                self.assertEqual(result['scores_breakdown']['FWA (Fixed Wireless Access / Eolo / Linkem)'],
+                                 0 if congested else 20)
+
+    def test_tim_dsl_fingerprints_and_capacity_limits(self):
+        copper = 'FTTC / VDSL2 (Fibra Misto Rame)'
+        for key in ('model', 'vendor', 'http_server'):
+            for marker in ('ZTE', 'H388X', 'Technicolor', 'TIM Hub', 'Sercomm', 'DGA4132'):
+                for upload, points in ((35, 45), (55, 0)):
+                    with self.subTest(key=key, marker=marker, upload=upload):
+                        result = self.est.estimate_physical_medium({'gateway': {key: marker}},
+                            {'asn': 'AS3269'}, {'speed': {'upload_mbps': upload}})
+                        self.assertEqual(result['scores_breakdown'][copper], points)
+        for asn, speed in ((32690, {'upload_mbps': 15}),
+                           (3269, {'valid': False, 'upload_mbps': 15}), (3269, {})):
+            result = self.est.estimate_physical_medium({'gateway': {'model': 'H388X'}},
+                {'asn': asn}, {'speed': speed})
+            self.assertEqual(result['scores_breakdown'][copper], 0)
+
+    def test_congested_latency_uses_minimum_floor(self):
+        result = self.est.estimate_physical_medium({}, {},
+            {'bufferbloat': {'download_delta_ms': 98}},
+            {'hop2_bng': {'min_ms': 1, 'median_ms': 33, 'spread_ms': 32,
+                          'iqr_ms': 63, 'is_responsive': True}})
+        self.assertEqual(result['scores_breakdown']['FTTH (Fibra Ottica Pura GPON / XGS-PON)'], 25)
+        result = self.est.estimate_physical_medium({}, {},
+            {'primary_latency': {'min_ms': 34, 'median_ms': 66, 'iqr_ms': 63},
+             'bufferbloat': {'download_delta_ms': 98}})
+        self.assertEqual(result['scores_breakdown']['FWA (Fixed Wireless Access / Eolo / Linkem)'], 0)
+
     def test_ftth_estimation(self):
         lan_data = {"gateway": {"ipv4": "192.168.1.1"}, "primary_interface": {"mtu": 1500}}
         wan_data = {"isp": "Fastweb", "org": "Fastweb SpA", "asn": "AS12874", "nat": {}}

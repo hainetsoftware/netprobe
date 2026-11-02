@@ -148,6 +148,10 @@ class NetworkEstimator:
         # Gateway IP locale
         gw_info = lan_data.get("gateway") or {}
         gw_ip = gw_info.get("ipv4") or ""
+        gateway_identity = " ".join(str(gw_info.get(key) or "") for key in
+                                    ("vendor", "model", "http_server")).lower()
+        dsl_hardware = any(marker in gateway_identity for marker in
+                           ("zte", "h388x", "technicolor", "tim hub", "sercomm", "dga4132"))
 
         # MTU interfaccia primaria
         p_iface = lan_data.get("primary_interface") or {}
@@ -160,8 +164,8 @@ class NetworkEstimator:
         # ASN & ISP
         isp = (wan_data.get("isp") or "").lower()
         org = (wan_data.get("org") or "").lower()
-        asn_raw = str(wan_data.get("asn") or "").upper().replace("AS", "").strip()
-        asn_num = int(asn_raw) if asn_raw.isdigit() else None
+        asn_match = re.search(r"\b(?:AS)?(\d+)\b", str(wan_data.get("asn") or ""), re.I)
+        asn_num = int(asn_match[1]) if asn_match else None
         rdns = (wan_data.get("reverse_dns") or "").lower()
 
         scores = {
@@ -177,6 +181,14 @@ class NetworkEstimator:
         rationale = []
         evidence = []
         fttc_vetoed = False
+        tim_dsl_anchor = asn_num == 3269 and dsl_hardware and up_mbps is not None and up_mbps <= 35.0
+        bb = perf_data.get("bufferbloat") or {}
+        gw_lat = perf_data.get("gateway_latency") or {}
+        is_congested = (
+            (bb.get("download_delta_ms") or 0.0) > 35.0
+            or (gw_lat.get("iqr_ms") or 0.0) > 8.0
+            or (hop2.get("spike_fraction") or 0.0) > 0.25
+        )
 
         def add_ev(reason_str: str, contribs: Dict[str, float]):
             rationale.append(reason_str)
@@ -184,6 +196,9 @@ class NetworkEstimator:
                 "reason": reason_str,
                 "contributions": {k: round(v, 1) for k, v in contribs.items()}
             })
+
+        if is_congested:
+            add_ev("Dispersione di latenza elevata rilevata ma attribuita a congestione/bufferbloat; euristiche radio disattivate.", {})
 
         # =====================================================================
         # 1. VINCOLI FISICI E BARRIERE DETERMINISTICHE
@@ -204,7 +219,7 @@ class NetworkEstimator:
                 f"Upload sostenuto di {up_mbps:.1f} Mbps: supera il limite fisico insuperabile del rame VDSL2 profilo 35b (35.0 Mbps). FTTC fisicamente escluso.",
                 {"FTTC / VDSL2 (Fibra Misto Rame)": -999.0}
             )
-        elif is_it and up_mbps is not None and up_mbps > 21.0:
+        elif is_it and up_mbps is not None and up_mbps > 21.0 and not tim_dsl_anchor:
             scores["FTTC / VDSL2 (Fibra Misto Rame)"] = -999.0
             fttc_vetoed = True
             add_ev(
@@ -224,6 +239,15 @@ class NetworkEstimator:
         # =====================================================================
         # 2. IMPRONTA GATEWAY / TETHERING HOTSPOT
         # =====================================================================
+        tim_dsl_anchor = tim_dsl_anchor and not fttc_vetoed
+        if tim_dsl_anchor:
+            scores["FTTC / VDSL2 (Fibra Misto Rame)"] += 45.0
+            add_ev("ASN TIM AS3269 e gateway DSL riconosciuto con upload <= 35 Mbps: profilo FTTC/VDSL2.",
+                   {"FTTC / VDSL2 (Fibra Misto Rame)": 45.0})
+            if mtu == 1492 or wan_data.get("path_mtu") == 1492:
+                scores["FTTC / VDSL2 (Fibra Misto Rame)"] += 10.0
+                add_ev("Profilo TIM DSL con MTU 1492 PPPoE.", {"FTTC / VDSL2 (Fibra Misto Rame)": 10.0})
+
         if gw_ip == "172.20.10.1":
             scores["Mobile Cellular (4G LTE / 5G Mobile Hotspot)"] += 90.0
             add_ev(
@@ -240,7 +264,6 @@ class NetworkEstimator:
         # =====================================================================
         # 3. ANALISI HOP 2 (BNG / FIRST PROVIDER HOP) BURST METRICS
         # =====================================================================
-        gw_lat = perf_data.get("gateway_latency") or {}
         gw_min = gw_lat.get("min_ms")
         if gw_min is not None and hop2_min is not None:
             access_delta = max(0.0, hop2_min - gw_min)
@@ -264,7 +287,7 @@ class NetworkEstimator:
         prim_spike_frac = prim_lat.get("spike_fraction", 0.0)
 
         radio_delta, radio_spread, radio_iqr = _access_metrics(perf_data, hop2)
-        radio_signature = ((radio_spread is not None and radio_spread >= 12.0)
+        radio_signature = not is_congested and ((radio_spread is not None and radio_spread >= 12.0)
                            or (radio_iqr is not None and radio_iqr >= 8.0)
                            or (radio_delta is not None and radio_delta >= 18.0))
         try:
@@ -299,7 +322,7 @@ class NetworkEstimator:
         if hop2_min is not None and hop2_responsive:
             # Caso FTTH: propagazione ottica sub-2.5 ms con dispersione minima (spread < 3.0 ms)
             # Calibrato: fibra diretta GPON/XGS-PON verso OLT (regola non deterministica capped a max 25 pt)
-            if access_delta is not None and access_delta < 2.5 and (hop2_spread is None or hop2_spread < 3.0):
+            if access_delta is not None and access_delta < 2.5 and (is_congested or hop2_spread is None or hop2_spread < 3.0):
                 scores["FTTH (Fibra Ottica Pura GPON / XGS-PON)"] += 25.0
                 scores["FTTC / VDSL2 (Fibra Misto Rame)"] -= 15.0
                 add_ev(
@@ -309,7 +332,7 @@ class NetworkEstimator:
             
             # Caso FTTC: latenza di accesso tipica del rame (delta 2.5-16 ms) con dispersione contenuta (spread <= 3.0 ms o spread < 5.0 ms con IQR < 4.0 ms)
             # Calibrato: ritardo di framing/frammentazione VDSL2 (regola capped a max 25 pt)
-            elif access_delta is not None and 2.5 <= access_delta <= 16.0 and not fttc_vetoed and (hop2_spread is None or hop2_spread <= 3.0 or (hop2_spread < 5.0 and (hop2_iqr is None or hop2_iqr < 4.0))):
+            elif access_delta is not None and 2.5 <= access_delta <= 16.0 and not fttc_vetoed and (is_congested or hop2_spread is None or hop2_spread <= 3.0 or (hop2_spread < 5.0 and (hop2_iqr is None or hop2_iqr < 4.0))):
                 scores["FTTC / VDSL2 (Fibra Misto Rame)"] += 25.0
                 scores["FTTH (Fibra Ottica Pura GPON / XGS-PON)"] += 5.0
                 spread_info = f", spread {hop2_spread:.1f} ms" if hop2_spread is not None else ""
@@ -331,7 +354,7 @@ class NetworkEstimator:
                     f"Dispersione temporale sull'accesso operatore ({spread_str}{delta_str}): compatibile con scheduling radio su frame LTE/5G o FWA.",
                     {"Mobile Cellular (4G LTE / 5G Mobile Hotspot)": 25.0, "FWA (Fixed Wireless Access / Eolo / Linkem)": 20.0, "FTTH (Fibra Ottica Pura GPON / XGS-PON)": -15.0}
                 )
-            else:
+            elif not is_congested:
                 # Zona ambigua (16–20 ms o dispersione intermedia): evidenza debole e mista
                 c = {"FWA (Fixed Wireless Access / Eolo / Linkem)": 10.0, "Mobile Cellular (4G LTE / 5G Mobile Hotspot)": 10.0}
                 scores["FWA (Fixed Wireless Access / Eolo / Linkem)"] += 10.0
@@ -365,7 +388,7 @@ class NetworkEstimator:
                     f"Latenza minima verso l'edge di {edge_min_rtt:.1f} ms: compatibile sia con FTTC che con FTTH metropolitana.",
                     {"FTTC / VDSL2 (Fibra Misto Rame)": 20.0, "FTTH (Fibra Ottica Pura GPON / XGS-PON)": 10.0}
                 )
-            elif 20.0 < edge_min_rtt <= 60.0:
+            elif not is_congested and 20.0 < edge_min_rtt <= 60.0:
                 scores["Mobile Cellular (4G LTE / 5G Mobile Hotspot)"] += 20.0
                 scores["FWA (Fixed Wireless Access / Eolo / Linkem)"] += 15.0
                 add_ev(
@@ -499,7 +522,7 @@ class NetworkEstimator:
             shape_min, shape_med, shape_jit, shape_src = hop2_min, hop2_median, hop2_jitter, "hop 2"
         elif edge_min_rtt is not None and prim_med is not None and prim_n >= 6:
             shape_min, shape_med, shape_jit, shape_src = edge_min_rtt, prim_med, edge_jitter, "edge"
-        if shape_src and geo_floor is None:
+        if shape_src and geo_floor is None and not is_congested:
             spread = shape_med - shape_min
             if 8.0 <= shape_min <= 25.0 and 2.0 <= spread <= 8.0:
                 scores[K_DOCSIS] += 6.0
@@ -598,15 +621,11 @@ class NetworkEstimator:
                     {K_FTTH: sc}
                 )
             elif mx >= 80.0:
-                sc_mob = 6.0
-                sc_fwa = 5.0
                 sc_doc = 5.0
-                scores[K_MOB] += sc_mob
-                scores[K_FWA] += sc_fwa
                 scores[K_DOCSIS] += sc_doc
                 add_ev(
-                    f"Delta latenza sotto carico +{mx:.0f} ms: mezzo condiviso con buffer profondi (radio/DOCSIS), indizio debole.",
-                    {K_MOB: sc_mob, K_FWA: sc_fwa, K_DOCSIS: sc_doc}
+                    f"Delta latenza sotto carico +{mx:.0f} ms: buffer profondi, compatibili anche con DOCSIS; non prova di accesso radio.",
+                    {K_DOCSIS: sc_doc}
                 )
             if ul_d >= 40.0 and ul_d >= 3.0 * max(dl_d, 1.0):
                 sc_doc = 5.0
@@ -858,6 +877,7 @@ class NetworkEstimator:
             "noisy": is_noisy,
             "noisy_throughput": is_tp_noisy,
             "noisy_latency": is_lat_noisy,
+            "is_congested": is_congested,
             "noise_events": noise_events,
             "reasons": mq_reasons
         }
@@ -867,6 +887,8 @@ class NetworkEstimator:
         if not insufficient and best_medium:
             b_med = best_medium[0]
             if gw_ip in ("172.20.10.1", "192.168.43.1", "192.168.225.1", "192.168.42.1") and b_med == K_MOB:
+                is_deterministic = True
+            elif tim_dsl_anchor and b_med == K_FTTC:
                 is_deterministic = True
             elif geo_floor is not None and b_med == K_GEO:
                 is_deterministic = True

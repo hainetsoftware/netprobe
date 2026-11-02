@@ -51,16 +51,21 @@ class StorageTests(unittest.TestCase):
 
     def test_streaming_floor_and_baseline_exclusion(self):
         noisy = report()
-        noisy['performance']['bufferbloat']['download_delta_ms'] = 46
+        noisy['performance']['bufferbloat']['download_delta_ms'] = 39.5
+        noisy['lan']['gateway'] = {'vendor': 'ZTE', 'model': 'H388X', 'http_server': 'DSL gateway'}
         self.storage.store_telemetry_run(noisy)
         self.assertEqual(self.rows()[0]['is_congested'], 1)
         self.assertEqual(self.rows()[0]['bng_floor_ms'], 2.5)
+        self.assertEqual(self.rows()[0]['gateway_model'], 'H388X')
+        self.assertEqual(self.rows()[0]['gateway_vendor'], 'ZTE')
+        self.assertEqual(self.rows()[0]['gateway_http_server'], 'DSL gateway')
+        self.assertEqual(self.rows()[0]['public_asn'], 15169)
         self.assertEqual(self.storage.baseline_runs(), [])
         self.storage.store_telemetry_run(report())
         self.assertEqual(len(self.storage.baseline_runs()), 1)
 
     def test_each_congestion_threshold_is_strict(self):
-        for section, key, threshold in (('bufferbloat', 'download_delta_ms', 45),
+        for section, key, threshold in (('bufferbloat', 'download_delta_ms', 35),
                                         ('bufferbloat', 'upload_delta_ms', 45),
                                         ('gateway_latency', 'iqr_ms', 8),
                                         ('bng', 'iqr_ms', 15), ('bng', 'spike_fraction', .2)):
@@ -132,9 +137,24 @@ class StorageTests(unittest.TestCase):
         self.assertNotEqual(self.rows()[0]['host_hash'], prepare_telemetry(report(), 'salt')['host_hash'])
 
     def test_platform_paths(self):
-        with patch('core.storage.platform.system', return_value='Linux'), patch.dict(os.environ, {'XDG_DATA_HOME': '/tmp/xdg'}):
-            self.assertEqual(data_directory(), Path('/tmp/xdg/netprobe'))
-        with patch('core.storage.platform.system', return_value='Darwin'):
-            self.assertTrue(str(data_directory()).endswith('Library/Application Support/NetProbe'))
-        with patch('core.storage.platform.system', return_value='Windows'), patch.dict(os.environ, {'LOCALAPPDATA': '/tmp/local'}):
-            self.assertEqual(data_directory(), Path('/tmp/local/NetProbe'))
+        for platform in ('linux', 'darwin', 'win32'):
+            with self.subTest(platform=platform), patch('core.storage.sys.platform', platform), patch.dict(
+                    os.environ, {'XDG_DATA_HOME': '/tmp/xdg', 'LOCALAPPDATA': '/tmp/local'}, clear=True):
+                self.assertEqual(data_directory(), Path('/tmp/xdg') / 'netprobe')
+        with patch('core.storage.Path.home', return_value=Path(self.temp.name)), patch.dict(os.environ, {}, clear=True):
+            for platform, expected in (
+                ('linux', Path.home() / '.local/share/netprobe'),
+                ('darwin', Path.home() / 'Library/Application Support/NetProbe'),
+                ('win32', Path.home() / '.netprobe'),
+            ):
+                with self.subTest(platform=platform), patch('core.storage.sys.platform', platform):
+                    self.assertEqual(data_directory(), expected)
+        with patch('core.storage.sys.platform', 'win32'), patch.dict(
+                os.environ, {'LOCALAPPDATA': '/tmp/local'}, clear=True):
+            self.assertEqual(data_directory(), Path('/tmp/local') / 'NetProbe')
+
+    def test_legacy_queueing_runs_excluded_after_restart(self):
+        self.storage.store_telemetry_run(report())
+        with self.storage.connection() as db:
+            db.execute('UPDATE telemetry_runs SET bufferbloat_delta_ms=39.5, is_congested=0')
+        self.assertEqual(StorageManager(self.path).baseline_runs(), [])

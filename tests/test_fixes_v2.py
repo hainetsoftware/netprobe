@@ -108,12 +108,9 @@ class TestFixesV2(unittest.TestCase):
         res, _ = replay_file_with_data(self.wind3_file)
         ev = res["physical_medium"]["evidence"]
         ablated = recalculate_classification(ev, ablate_list=["172.20.10.1"])
-        top2 = [c[0] for c in ablated["ranked"][:2]]
-        self.assertIn("Mobile Cellular", top2[0])
-        self.assertIn("FWA", top2[1])
-        for cand in top2:
-            self.assertNotIn("FTTH", cand)
-            self.assertNotIn("FTTC", cand)
+        # Congested timing cannot replace the removed deterministic hotspot identity.
+        self.assertTrue(res["physical_medium"]["measurement_quality"]["is_congested"])
+        self.assertEqual(ablated["predicted_medium"], "Indeterminato (dati insufficienti)")
 
     # 5. LEO dispersion rule requires marker
     def test_item5_leo_requires_marker(self):

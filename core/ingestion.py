@@ -62,7 +62,7 @@ def prepare_telemetry(report, salt):
             valid = False
     if speed.get('valid') is False or speed.get('errors') or speed.get('error') or speed.get('timed_out') or speed.get('incomplete'):
         valid = False
-    limits = ((buffer.get('download_delta_ms'), 45), (buffer.get('upload_delta_ms'), 45),
+    limits = ((buffer.get('download_delta_ms'), 35), (buffer.get('upload_delta_ms'), 45),
               (gateway.get('iqr_ms'), 8), (bng.get('iqr_ms'), 15), (bng.get('spike_fraction'), .20))
     congested = any(number(value) is not None and number(value) > limit for value, limit in limits)
     # Malformed supplied metrics must never silently become clean training data.
@@ -100,6 +100,9 @@ def prepare_telemetry(report, salt):
                 interface_type=str(lan.get('interface_type') or interface.get('type') or 'unknown'),
                 public_asn=asn, public_isp=wan.get('isp'), subnet_prefix=prefix,
                 gateway_ip=(lan.get('gateway') or {}).get('ipv4'), gateway_min_ms=number(gateway.get('min_ms')),
+                gateway_vendor=(lan.get('gateway') or {}).get('vendor'),
+                gateway_model=(lan.get('gateway') or {}).get('model'),
+                gateway_http_server=(lan.get('gateway') or {}).get('http_server'),
                 gateway_iqr_ms=number(gateway.get('iqr_ms')), bng_ip=bng.get('ip'), bng_floor_ms=floor,
                 bng_spread_ms=number(bng.get('spread_ms')), bng_iqr_ms=number(bng.get('iqr_ms')),
                 bng_spike_fraction=number(bng.get('spike_fraction')),
