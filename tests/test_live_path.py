@@ -87,28 +87,36 @@ class LoopbackSpeedHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if cls.mode == "under_2mb":
+            length = int(self.headers.get("Content-Length", "0"))
             with cls.lock:
                 remaining = max(0, (500 * 1024) - cls.bytes_served_up)
-                to_read = min(remaining, 64 * 1024)
-                cls.bytes_served_up += to_read
-
-            if to_read == 0:
-                self.send_error(503, "Budget exceeded")
+                allowed = length <= remaining
+                if allowed:
+                    cls.bytes_served_up += length
+            if not allowed:
+                self.send_error(413, "Budget exceeded")
                 return
-
             try:
-                self.rfile.read(to_read)
+                self.rfile.read(length)
                 self.send_response(200)
+                self.send_header("Content-Length", "0")
                 self.end_headers()
             except Exception:
                 pass
             return
 
+        # A real upload endpoint consumes exactly Content-Length and responds;
+        # waiting for EOF deadlocks a client that correctly uses Keep-Alive.
         try:
-            while True:
-                data = self.rfile.read(65536)
+            remaining = int(self.headers.get("Content-Length", "0"))
+            while remaining:
+                data = self.rfile.read(min(65536, remaining))
                 if not data:
-                    break
+                    return
+                remaining -= len(data)
+            self.send_response(200)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
         except Exception:
             pass
 
@@ -119,7 +127,8 @@ class LoopbackSpeedHandler(http.server.BaseHTTPRequestHandler):
 class TestLivePath(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = socketserver.TCPServer(("127.0.0.1", 0), LoopbackSpeedHandler)
+        cls.server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), LoopbackSpeedHandler)
+        cls.server.daemon_threads = True
         cls.port = cls.server.server_address[1]
         cls.server_thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.server_thread.start()

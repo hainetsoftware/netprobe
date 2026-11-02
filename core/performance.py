@@ -18,6 +18,11 @@ import concurrent.futures
 import urllib.request
 from typing import Dict, List, Any, Optional, Tuple
 
+# Shared immutable payload: no per-worker payload allocation or random generation.
+_UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024
+_STATIC_UPLOAD_BUFFER = b"0" * _UPLOAD_CHUNK_SIZE
+_UPLOAD_WRITE_BUFFER = memoryview(_STATIC_UPLOAD_BUFFER)[:256 * 1024]
+
 try:
     import psutil
     _HAS_PSUTIL = True
@@ -533,7 +538,7 @@ class PerformanceTester:
             # Test Upload (Cloudflare) con pinger sul target allineato
             ul_res, ul_loaded_rtt = self.measure_upload_stream(
                 duration=stream_dur,
-                workers=4,
+                download_mbps=headline_dl,
                 idle_rtt=primary_rtt,
                 ping_host=loaded_target_host,
                 live_cb=(lambda t, m: progress_cb('Upload', 70 + int(t / stream_dur * 25), live={'dir': 'up', 'mbps': m}) if progress_cb else None)
@@ -568,7 +573,7 @@ class PerformanceTester:
             dl_bytes = dl_res["total_bytes"] if dl_res else 0
             ul_bytes = ul_res["total_bytes"] if ul_res else 0
             dl_valid = bool(dl_res and dl_bytes >= MIN_VALID_PAYLOAD_BYTES and (dl_res.get("sustained_mbps") or 0) > 0)
-            ul_valid = bool(ul_res and ul_bytes >= MIN_VALID_PAYLOAD_BYTES and (ul_res.get("sustained_mbps") or 0) > 0)
+            ul_valid = bool(ul_res and ul_res.get("valid", True) and ul_bytes >= MIN_VALID_PAYLOAD_BYTES and (ul_res.get("sustained_mbps") or 0) > 0)
             speed_valid = dl_valid and ul_valid
 
             dl_reason = None
@@ -995,6 +1000,8 @@ class PerformanceTester:
 
     def _run_stream(self, direction: str, duration: float, workers: int, warmup: float,
                     idle_rtt: float, ping_host: str = "1.1.1.1", live_cb=None) -> Tuple[Dict[str, Any], float]:
+        if direction == "up":
+            return self.measure_upload_stream(duration, workers, idle_rtt, ping_host, live_cb)
         import http.client
         import ssl
 
@@ -1003,9 +1010,7 @@ class PerformanceTester:
         counter = [0]
         stream_errors = []
         ctx = ssl.create_default_context()
-        CH = 128 * 1024 if direction == "down" else 64 * 1024
-        payload = b"\0" * CH
-        body_len = 100_000_000  # 100 MB: non verrà mai completato, il test è a tempo
+        CH = 128 * 1024
 
         def connect():
             host = getattr(self, "speed_host", self.SPEED_HOST)
@@ -1016,11 +1021,6 @@ class PerformanceTester:
             else:
                 conn = http.client.HTTPSConnection(host, port, timeout=5, context=ctx)
             conn.connect()
-            if direction == "up":
-                try:
-                    conn.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 64 * 1024)
-                except OSError:
-                    pass
             return conn
 
         def download_worker():
@@ -1098,36 +1098,6 @@ class PerformanceTester:
                 except Exception:
                     pass
 
-        def upload_worker():
-            while not stop_event.is_set():
-                conn = None
-                conn_bytes = 0
-                try:
-                    conn = connect()
-                    conn.putrequest("POST", "/__up")
-                    conn.putheader("Content-Type", "application/octet-stream")
-                    conn.putheader("Content-Length", str(body_len))
-                    conn.putheader("User-Agent", "NetProbe/3.0")
-                    conn.endheaders()
-                    sent = 0
-                    while not stop_event.is_set() and sent < body_len:
-                        conn.sock.sendall(payload)  # bloccante: segue la velocita' reale del link
-                        sent += CH
-                        conn_bytes += CH
-                        with lock:
-                            counter[0] += CH
-                except Exception as e:
-                    with lock:
-                        counter[0] = max(0, counter[0] - conn_bytes)
-                        stream_errors.append({"direction": "up", "error": f"{type(e).__name__}: {e}"})
-                    time.sleep(0.1)
-                finally:
-                    if conn:
-                        try:
-                            conn.close()
-                        except Exception:
-                            pass
-
         loaded_rtts: List[float] = []
 
         def loaded_pinger():
@@ -1138,7 +1108,7 @@ class PerformanceTester:
                     loaded_rtts.append(m["median_ms"])
                 time.sleep(0.2)
 
-        target = download_worker if direction == "down" else upload_worker
+        target = download_worker
         t0 = time.perf_counter()
         threads = [threading.Thread(target=target, daemon=True) for _ in range(workers)]
         for th in threads:
@@ -1184,10 +1154,204 @@ class PerformanceTester:
         warm = getattr(self, "warmup_duration", 1.5)
         return self._run_stream("down", duration, workers, warm, idle_rtt, ping_host=ping_host, live_cb=live_cb)
 
-    def measure_upload_stream(self, duration: float = 8.0, workers: int = 4, idle_rtt: float = 15.0, ping_host: str = "1.1.1.1", live_cb=None):
-        """Upload a tempo controllato; byte contati quando accettati dal socket (SO_SNDBUF 64 KB)."""
-        warm = getattr(self, "warmup_duration", 1.5)
-        return self._run_stream("up", duration, workers, warm, idle_rtt, ping_host=ping_host, live_cb=live_cb)
+    @staticmethod
+    def _upload_workers(download_mbps=None, link_speed_mbps=None):
+        if link_speed_mbps is None and _HAS_PSUTIL:
+            try:
+                link_speed_mbps = max((nic.speed for name, nic in psutil.net_if_stats().items()
+                                       if nic.isup and not name.startswith("lo")), default=0)
+            except Exception:
+                link_speed_mbps = 0
+        return 6 if (link_speed_mbps or 0) >= 1000 or (download_mbps or 0) > 100 else 1
+
+    def measure_upload_stream(self, duration: float = 8.0, workers=None,
+                              idle_rtt: float = 15.0, ping_host: str = "1.1.1.1",
+                              live_cb=None, download_mbps=None, link_speed_mbps=None):
+        """Timed payload writes with persistent per-worker HTTP connections.
+
+        Counts socket-accepted bytes (not remote acknowledgements). Setup precedes
+        the first payload timestamp; later reconnect/response stalls remain in
+        the samples. Only validated endpoints can yield a valid measurement.
+        """
+        import http.client
+        import ssl
+
+        duration = max(0.1, float(duration))
+        worker_count = max(1, min(6, int(workers))) if workers is not None else self._upload_workers(
+            download_mbps, link_speed_mbps)
+        warm = max(1.0, min(1.5, getattr(self, "warmup_duration", 1.5)))
+        ctx = ssl.create_default_context()
+        stop = threading.Event()
+        started = threading.Event()
+        lock = threading.Lock()
+        state = {"start": None, "bytes": 0, "accepted": 0}
+        errors, active, loaded_rtts = [], set(), []
+        healthy_workers = set()
+
+        def record_error(error):
+            with lock:
+                if len(errors) < 20:
+                    errors.append({"direction": "up", "error": str(error)})
+
+        def worker():
+            conn = None
+            body_limit = _UPLOAD_CHUNK_SIZE
+            body_len = 256 * 1024  # Validate the endpoint even on slow uplinks.
+            try:
+                while not stop.is_set():
+                    try:
+                        if conn is None:
+                            cls = http.client.HTTPConnection if self.speed_scheme == "http" else http.client.HTTPSConnection
+                            kwargs = {} if self.speed_scheme == "http" else {"context": ctx}
+                            conn = cls(self.speed_host, self.speed_port, timeout=2.0, **kwargs)
+                            conn.connect()
+                            with lock:
+                                active.add(conn)
+                            if stop.is_set():
+                                break
+                            try:
+                                conn.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1024 * 1024)
+                            except OSError:
+                                pass
+                        conn.sock.settimeout(0.5)
+                        conn.putrequest("POST", "/__up")
+                        conn.putheader("Content-Type", "application/octet-stream")
+                        conn.putheader("Content-Length", str(body_len))
+                        conn.putheader("Connection", "keep-alive")
+                        conn.putheader("User-Agent", "NetProbe/3.1")
+                        conn.endheaders()
+                        sent = 0
+                        while sent < body_len and not stop.is_set():
+                            before = time.perf_counter()
+                            with lock:
+                                origin = state["start"]
+                            if origin is not None and before - origin >= duration:
+                                stop.set()
+                                break
+                            # send(), unlike sendall(), returns the exact partial-write count.
+                            block = _UPLOAD_WRITE_BUFFER[:min(len(_UPLOAD_WRITE_BUFFER), body_len - sent)]
+                            n = conn.sock.send(block)
+                            if n <= 0:
+                                raise ConnectionError("Upload socket closed")
+                            sent += n
+                            with lock:
+                                if state["start"] is None:
+                                    state["start"] = before
+                                    started.set()
+                                state["bytes"] += n
+                        if sent != body_len or stop.is_set():
+                            break  # Incomplete final request must never be reused.
+                        resp = conn.getresponse()
+                        status = resp.status
+                        # Drain responses in bounded buffers before reusing HTTP/1.1.
+                        while not stop.is_set() and resp.read(65536):
+                            pass
+                        if 200 <= status < 300:
+                            with lock:
+                                state["accepted"] += 1
+                                healthy_workers.add(threading.get_ident())
+                            body_len = body_limit
+                        else:
+                            with lock:
+                                healthy_workers.discard(threading.get_ident())
+                            record_error("HTTP {} {}".format(status, resp.reason))
+                            if status == 413 and body_len > 256 * 1024:
+                                body_limit = body_len = max(256 * 1024, body_len // 2)
+                            else:
+                                break
+                        if resp.will_close or status == 413:
+                            with lock:
+                                active.discard(conn)
+                            conn.close()
+                            conn = None
+                    except Exception as exc:
+                        if not stop.is_set():
+                            with lock:
+                                healthy_workers.discard(threading.get_ident())
+                            record_error("{}: {}".format(type(exc).__name__, exc))
+                        if conn is not None:
+                            with lock:
+                                active.discard(conn)
+                            conn.close()
+                            conn = None
+                        stop.wait(0.1)
+            finally:
+                if conn is not None:
+                    with lock:
+                        active.discard(conn)
+                    conn.close()
+
+        def pinger():
+            if stop.wait(warm):
+                return
+            while not stop.is_set():
+                result = self.ping_host(ping_host, count=2)
+                if result.get("median_ms") is not None:
+                    loaded_rtts.append(result["median_ms"])
+                stop.wait(0.2)
+
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=6)
+        futures = [pool.submit(worker) for _ in range(worker_count)]
+        series = [(0.0, 0)]
+        try:
+            # Bound readiness independently from the eight-second transfer window.
+            setup_deadline = time.perf_counter() + 5.0
+            while not started.wait(0.05):
+                if time.perf_counter() >= setup_deadline or all(f.done() for f in futures):
+                    break
+            if started.is_set():
+                threading.Thread(target=pinger, daemon=True).start()
+                last_t, last_b = 0.0, 0
+                while not stop.is_set():
+                    with lock:
+                        origin = state["start"]
+                    stop.wait(min(0.1, max(0.0, duration - (time.perf_counter() - origin))))
+                    with lock:
+                        now, cur = time.perf_counter() - origin, state["bytes"]
+                    series.append((now, cur))
+                    rate = (cur - last_b) * 8 / ((now - last_t) * 1e6) if now > last_t else 0
+                    if live_cb:
+                        live_cb(round(now, 1), round(rate, 1))
+                    if now >= 0.4 and now < duration - 1 and rate > 100 and worker_count < 6:
+                        count = min(6 - worker_count, 3 if worker_count == 1 else 2)
+                        futures.extend(pool.submit(worker) for _ in range(count))
+                        worker_count += count
+                    last_t, last_b = now, cur
+                    if now >= duration or all(f.done() for f in futures):
+                        break
+        finally:
+            stop.set()
+            with lock:
+                connections = list(active)
+            for conn in connections:
+                try:
+                    conn.sock.shutdown(socket.SHUT_RDWR)
+                except (OSError, AttributeError):
+                    pass
+            pool.shutdown(wait=True)
+
+        stats = self._summarize_upload(series, warm)
+        valid = bool(healthy_workers) and series[-1][1] > 0
+        if not valid:
+            stats.update(sustained_mbps=0.0, peak_mbps=0.0)
+        stats.update(total_bytes=series[-1][1], duration_s=round(series[-1][0], 2),
+                     errors=errors, valid=valid, workers=worker_count,
+                     completed_requests=state["accepted"])
+        loaded = round(statistics.median(loaded_rtts), 2) if loaded_rtts else None
+        return stats, loaded
+
+    def _summarize_upload(self, series, warm):
+        stats = self._summarize_stream(series, warm, series[-1][0])
+        # Preserve stalls in the graph and stability calculation. The upload
+        # headline is the mean of the top 80% of post-warmup intervals.
+        stable = [(b1 - b0) * 8 / ((t1 - t0) * 1e6)
+                  for (t0, b0), (t1, b1) in zip(series, series[1:])
+                  if t0 >= warm and t1 > t0]
+        if stable:
+            ordered = sorted(stable)
+            stats["sustained_mbps"] = round(statistics.mean(ordered[int(len(ordered) * 0.2):]), 2)
+            stats["peak_mbps"] = max(stats["peak_mbps"], stats["sustained_mbps"])
+        return stats
 
     def measure_tool_ceiling(self, duration: float = 0.25) -> float:
         """

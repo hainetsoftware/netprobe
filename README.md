@@ -201,6 +201,27 @@ in addition to its original parameters. Pass the recorded `hop2_bng` dictionary
 as `hop2_metrics` to preserve the dedicated probe's IP association.
 
 Exported diagnostic reports (`netprobe_report_*.json`) stay local and are ignored by Git.
+PeeringDB evidence in each report list is deduplicated by facility ID and name,
+capped at 25 records, and excludes nested API expansions. The full cache remains
+available for classification; other diagnostics can still increase total report size.
+
+### Upload measurement
+
+Upload uses a shared 8 MiB static buffer and 256 KiB memoryview writes. Each
+worker reuses its own HTTP connection, validates the endpoint with a 256 KiB
+POST, then cycles bodies up to 8 MiB, reducing them on HTTP 413 responses.
+This uses the standard library without adding a connection-pool dependency.
+A Gigabit active interface or measured download above 100 Mbps selects six
+workers; slower links start with one and can scale to four, then six.
+
+The default transfer window is eight seconds from the first payload write,
+sampled every 100 ms. The sustained upload estimate averages the top 80% of
+intervals after a 1–1.5 second warmup. All intervals, including stalls, remain
+in graph samples and stability calculations. Counts represent bytes accepted
+by the local socket; successful HTTP responses validate the endpoint. Socket
+buffers and TLS still impose processing costs, so live throughput and CPU
+usage must be checked on the target connection.
+
 
 ### Persistent cache and ingestion policy
 

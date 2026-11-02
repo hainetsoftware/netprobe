@@ -41,6 +41,31 @@ class EgressPathTests(unittest.TestCase):
             multi_cdn_inspection={'verified_metro_code': 'MXP', 'consensus': True},
             peeringdb_info=self.presence, **kwargs)
 
+    def test_facility_evidence_is_deduplicated_capped_and_compact(self):
+        rows = [dict(fac_id=i, name='Facility {}'.format(i), city=city,
+                     fac={'raw_depth_expansion': 'x' * 10000})
+                for city in ('Milan', 'Rome') for i in range(100)]
+        self.presence = {'facilities': rows * 5, 'netfac': copy.deepcopy(rows) * 5}
+        original = copy.deepcopy(self.presence)
+        result = self.replay()
+        lists = [result['metro_egress']['colocated_peering_presence']]
+        lists += [path['colocated_peering_presence'] for path in result['egress_paths']]
+        lists += [path['colocated_peering_presence'] for path in result['metro_egress']['exit_paths']]
+        for records in lists:
+            self.assertEqual(len(records), 25)
+            keys = [(f.get('fac_id') or f.get('id'), f.get('name')) for f in records]
+            self.assertEqual(len(keys), len(set(keys)))
+            self.assertTrue(all('fac' not in f for f in records))
+        self.assertLess(len(json.dumps(result, ensure_ascii=False, indent=2).encode('utf-8')), 50000)
+        self.assertEqual(self.presence, original)
+
+    def test_facility_identity_uses_id_fallback_and_name(self):
+        info = {'facilities': [dict(fac_id=7, name='A', city='Rome'),
+                               dict(id=7, name='A', city='Roma'),
+                               dict(id=7, name='B', city='Rome'),
+                               dict(fac_id=8, name='A', city='Rome')]}
+        self.assertEqual(len(self.analyzer._city_presence(info, 'Roma')), 3)
+
     def test_split_exit_binds_milan_metadata_to_milan_router(self):
         result = self.replay()
         metro = result['metro_egress']

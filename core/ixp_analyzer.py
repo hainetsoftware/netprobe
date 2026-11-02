@@ -1781,7 +1781,7 @@ class IXPAnalyzer:
             "hop2_bng": ({"ip": hop2_ip, **hop2_metrics} if hop2_ip else None),
             "path_mtu": path_mtu,
             "hop2_skipped_hops": hop2_metrics.get("skipped_hops", []),
-            "peeringdb_facilities": peeringdb_info.get("facilities", []),
+            "peeringdb_facilities": self._compact_peering_presence(peeringdb_info.get("facilities", [])),
             "analysis_notes": classification.get("notes", []),
             "hypothesis": classification.get("hypothesis"),
             "is_identified": is_identified,
@@ -2630,12 +2630,30 @@ class IXPAnalyzer:
                    'padua': 'padova', 'frankfurt': 'francoforte', 'london': 'londra'}
         return aliases.get(city, city)
 
+    @staticmethod
+    def _compact_peering_presence(entries):
+        """Bound report evidence while retaining full records in the local cache."""
+        seen, presence = set(), []
+        for entry in entries:
+            identity = (entry.get('fac_id') or entry.get('id'), entry.get('name'))
+            if identity in seen:
+                continue
+            seen.add(identity)
+            # Exclude depth-expanded PeeringDB objects from report evidence.
+            presence.append({field: entry[field] for field in (
+                'fac_id', 'id', 'name', 'city', 'country', 'ix_id',
+                'ipaddr4', 'ipaddr6', 'speed') if field in entry})
+            if len(presence) == 25:
+                break
+        return presence
+
     def _city_presence(self, info, city):
         """Presence is supporting evidence, never proof of switch traversal."""
         key = self._city_key(city)
-        return [entry for kind in ('facilities', 'netixlan', 'netfac')
-                for entry in info.get(kind, [])
-                if key and self._city_key(entry.get('city')) == key]
+        return self._compact_peering_presence(
+            entry for kind in ('facilities', 'netixlan', 'netfac')
+            for entry in info.get(kind, [])
+            if key and self._city_key(entry.get('city')) == key)
 
     def _dynamic_ixp(self, hops, info):
         # netixlan participant addresses alone do NOT establish a LAN prefix.
@@ -2933,7 +2951,7 @@ class IXPAnalyzer:
             "traceroute_hops": hops,
             "access_profile": access_profile,
             "hop2_bng": ({"ip": hop2_metrics.get("ip") or hops[1].get("ip"), **hop2_metrics} if len(hops) > 1 and hop2_metrics else None),
-            "peeringdb_facilities": peeringdb_info.get("facilities", []),
+            "peeringdb_facilities": self._compact_peering_presence(peeringdb_info.get("facilities", [])),
             "analysis_notes": classification.get("notes", []),
             "hypothesis": classification.get("hypothesis"),
             "is_identified": is_identified,
