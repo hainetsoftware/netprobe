@@ -8,7 +8,8 @@ from core.performance import PerformanceTester, _STATIC_UPLOAD_BUFFER
 
 
 class UploadEngineTests(unittest.TestCase):
-    def run_transport(self, reject=False, ceiling=False, fail=False, workers=1):
+    def run_transport(self, reject=False, ceiling=False, fail=False, workers=1,
+                      download_mbps=None, delayed_response=False, write_timeout=False):
         connections = []
 
         class Connection:
@@ -19,6 +20,8 @@ class UploadEngineTests(unittest.TestCase):
                 self.sent = 0
                 self.length = 0
                 self.options = []
+                self.timeouts = []
+                self.write_sizes = []
                 connections.append(self)
 
             def connect(self):
@@ -28,7 +31,7 @@ class UploadEngineTests(unittest.TestCase):
                 self.options.append(args)
 
             def settimeout(self, timeout):
-                pass
+                self.timeouts.append(timeout)
 
             def putrequest(self, method, path):
                 self.sent = 0
@@ -45,7 +48,10 @@ class UploadEngineTests(unittest.TestCase):
                 assert isinstance(data, memoryview)
                 assert data.obj is _STATIC_UPLOAD_BUFFER
                 assert len(data) <= 256 * 1024
-                time.sleep(0.001)
+                self.write_sizes.append(len(data))
+                time.sleep(0.065 if delayed_response else 0.001)
+                if write_timeout:
+                    raise TimeoutError('write stalled')
                 if fail and self.sent >= 65536:
                     raise ConnectionError('interrupted')
                 n = min(len(data), 65536)  # Always force partial writes.
@@ -54,6 +60,10 @@ class UploadEngineTests(unittest.TestCase):
 
             def getresponse(self):
                 assert self.sent == self.length
+                if delayed_response:
+                    assert 0 < self.timeouts[-1] <= 1.5
+                    time.sleep(self.timeouts[-1])
+                    raise TimeoutError('The read operation timed out')
                 status = 403 if reject else 413 if ceiling and self.length > 1024 * 1024 else 200
 
                 class Response:
@@ -77,7 +87,9 @@ class UploadEngineTests(unittest.TestCase):
         tester.speed_scheme = 'http'
         with patch('http.client.HTTPConnection', Connection), patch.object(tester, 'ping_host', return_value={}):
             before = time.perf_counter()
-            result, _ = tester.measure_upload_stream(duration=1.3 if ceiling else 0.48, workers=workers)
+            result, _ = tester.measure_upload_stream(
+                duration=4.5 if delayed_response else 1.3 if ceiling else 0.48,
+                workers=workers, download_mbps=download_mbps)
             elapsed = time.perf_counter() - before
         self.assertTrue(all(conn.closed for conn in connections))
         self.assertTrue(all(mbps >= 0 for _, mbps in result['samples']))
@@ -90,7 +102,7 @@ class UploadEngineTests(unittest.TestCase):
         self.assertEqual(len(connections), 1)
         self.assertLess(result['duration_s'], 0.55)
         self.assertGreater(elapsed, result['duration_s'] + 0.10)
-        self.assertIn((socket.SOL_SOCKET, socket.SO_SNDBUF, 1024 * 1024), connections[0].options)
+        self.assertIn((socket.SOL_SOCKET, socket.SO_SNDBUF, 128 * 1024), connections[0].options)
         self.assertLessEqual(max(connections[0].requests), 8 * 1024 * 1024)
 
     def test_rejected_endpoint_is_not_valid_throughput(self):
@@ -117,9 +129,35 @@ class UploadEngineTests(unittest.TestCase):
         self.assertTrue(result['valid'])
 
     def test_capacity_selects_workers(self):
-        self.assertEqual(PerformanceTester._upload_workers(90, 100), 1)
-        self.assertEqual(PerformanceTester._upload_workers(101, 100), 6)
-        self.assertEqual(PerformanceTester._upload_workers(None, 1000), 6)
+        for download, expected in [(None, (2, 64, 2)), (38, (2, 64, 2)),
+                                   (59.9, (2, 64, 2)), (60, (3, 128, 10)),
+                                   (149.9, (3, 128, 10)), (150, (6, 256, 25))]:
+            with self.subTest(download=download):
+                workers, chunk, body = PerformanceTester._upload_profile(download)
+                self.assertEqual((workers, chunk // 1024, body // (1024 * 1024)), expected)
+                self.assertEqual(PerformanceTester._upload_workers(download, 1000), workers)
+
+    def test_asymmetric_line_samples_survive_delayed_responses(self):
+        result, connections, elapsed = self.run_transport(
+            workers=None, download_mbps=38.0, delayed_response=True)
+        self.assertEqual(result['workers'], 2)
+        self.assertEqual(result['chunk_size'], 64 * 1024)
+        self.assertEqual(result['post_body_size'], 2 * 1024 * 1024)
+        self.assertTrue(all(max(c.write_sizes) == 64 * 1024 for c in connections))
+        self.assertTrue(result['valid'])
+        self.assertIsNone(result['invalid_reason'])
+        self.assertGreaterEqual(result['total_bytes'], 2 * 1024 * 1024)
+        self.assertGreater(len(result['samples']), 20)
+        self.assertGreater(result['sustained_mbps'], 0)
+        self.assertEqual(result['completed_requests'], 0)
+        self.assertEqual(result['errors'], [])
+        self.assertLess(elapsed, 5.0)
+
+    def test_write_timeouts_do_not_validate_upload(self):
+        result, _, _ = self.run_transport(write_timeout=True)
+        self.assertFalse(result['valid'])
+        self.assertEqual(result['total_bytes'], 0)
+        self.assertTrue(result['errors'])
 
     def test_warmup_and_top_eighty_percent(self):
         series = [(0.0, 0)]

@@ -21,7 +21,6 @@ from typing import Dict, List, Any, Optional, Tuple
 # Shared immutable payload: no per-worker payload allocation or random generation.
 _UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024
 _STATIC_UPLOAD_BUFFER = b"0" * _UPLOAD_CHUNK_SIZE
-_UPLOAD_WRITE_BUFFER = memoryview(_STATIC_UPLOAD_BUFFER)[:256 * 1024]
 
 try:
     import psutil
@@ -586,7 +585,10 @@ class PerformanceTester:
             ul_reason = None
             if not ul_valid:
                 ul_mb = ul_bytes / (1024 * 1024)
-                ul_reason = f"Upload insufficiente (< 2 MB trasferiti: {ul_mb:.1f} MB)"
+                if ul_bytes < MIN_VALID_PAYLOAD_BYTES:
+                    ul_reason = f"Upload insufficiente (< 2 MB trasferiti: {ul_mb:.1f} MB)"
+                else:
+                    ul_reason = "Upload non valido (campioni o endpoint non validi)"
                 ul_loaded_rtt = None
 
             invalid_reasons = []
@@ -1163,13 +1165,16 @@ class PerformanceTester:
 
     @staticmethod
     def _upload_workers(download_mbps=None, link_speed_mbps=None):
-        if link_speed_mbps is None and _HAS_PSUTIL:
-            try:
-                link_speed_mbps = max((nic.speed for name, nic in psutil.net_if_stats().items()
-                                       if nic.isup and not name.startswith("lo")), default=0)
-            except Exception:
-                link_speed_mbps = 0
-        return 6 if (link_speed_mbps or 0) >= 1000 or (download_mbps or 0) > 100 else 1
+        return PerformanceTester._upload_profile(download_mbps)[0]
+
+    @staticmethod
+    def _upload_profile(download_mbps=None):
+        # LAN adapter speed does not describe the capacity of the upstream WAN.
+        if download_mbps and download_mbps >= 150.0:
+            return 6, 256 * 1024, 25 * 1024 * 1024
+        if download_mbps and download_mbps >= 60.0:
+            return 3, 128 * 1024, 10 * 1024 * 1024
+        return 2, 64 * 1024, 2 * 1024 * 1024
 
     def measure_upload_stream(self, duration: float = 8.0, workers=None,
                               idle_rtt: float = 15.0, ping_host: str = "1.1.1.1",
@@ -1178,12 +1183,15 @@ class PerformanceTester:
 
         Counts socket-accepted bytes (not remote acknowledgements). Setup precedes
         the first payload timestamp; later reconnect/response stalls remain in
-        the samples. Only validated endpoints can yield a valid measurement.
+        the samples. Response timeouts preserve completed payload writes; explicit
+        HTTP rejections still invalidate that worker's measurement.
         """
         import http.client
         import ssl
 
         duration = max(0.1, float(duration))
+        _, chunk_size, post_body_size = self._upload_profile(download_mbps)
+        write_buffer = memoryview(_STATIC_UPLOAD_BUFFER)[:chunk_size]
         worker_count = max(1, min(6, int(workers))) if workers is not None else self._upload_workers(
             download_mbps, link_speed_mbps)
         warm = max(1.0, min(1.5, getattr(self, "warmup_duration", 1.5)))
@@ -1193,6 +1201,7 @@ class PerformanceTester:
         lock = threading.Lock()
         state = {"start": None, "bytes": 0, "accepted": 0}
         errors, active, loaded_rtts = [], set(), []
+        response_timeouts = []
         healthy_workers = set()
 
         def record_error(error):
@@ -1202,10 +1211,10 @@ class PerformanceTester:
 
         def worker():
             conn = None
-            body_limit = _UPLOAD_CHUNK_SIZE
-            body_len = 256 * 1024  # Validate the endpoint even on slow uplinks.
+            body_limit = body_len = post_body_size
             try:
                 while not stop.is_set():
+                    awaiting_response = False
                     try:
                         if conn is None:
                             cls = http.client.HTTPConnection if self.speed_scheme == "http" else http.client.HTTPSConnection
@@ -1217,7 +1226,7 @@ class PerformanceTester:
                             if stop.is_set():
                                 break
                             try:
-                                conn.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1024 * 1024)
+                                conn.sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 2 * chunk_size)
                             except OSError:
                                 pass
                         conn.sock.settimeout(0.5)
@@ -1236,7 +1245,7 @@ class PerformanceTester:
                                 stop.set()
                                 break
                             # send(), unlike sendall(), returns the exact partial-write count.
-                            block = _UPLOAD_WRITE_BUFFER[:min(len(_UPLOAD_WRITE_BUFFER), body_len - sent)]
+                            block = write_buffer[:min(chunk_size, body_len - sent)]
                             n = conn.sock.send(block)
                             if n <= 0:
                                 raise ConnectionError("Upload socket closed")
@@ -1247,9 +1256,20 @@ class PerformanceTester:
                                     started.set()
                                 state["bytes"] += n
                         if sent != body_len or stop.is_set():
+                            if sent:
+                                with lock:
+                                    healthy_workers.add(threading.get_ident())
                             break  # Incomplete final request must never be reused.
+                        with lock:
+                            healthy_workers.add(threading.get_ident())
+                        awaiting_response = True
+                        with lock:
+                            remaining = duration - (time.perf_counter() - state["start"])
+                        conn.sock.settimeout(max(0.001, min(1.5, remaining)))
                         resp = conn.getresponse()
                         status = resp.status
+                        # Only missing responses are tolerated, never known rejections.
+                        awaiting_response = 200 <= status < 300
                         # Drain responses in bounded buffers before reusing HTTP/1.1.
                         while not stop.is_set() and resp.read(65536):
                             pass
@@ -1273,9 +1293,14 @@ class PerformanceTester:
                             conn = None
                     except Exception as exc:
                         if not stop.is_set():
-                            with lock:
-                                healthy_workers.discard(threading.get_ident())
-                            record_error("{}: {}".format(type(exc).__name__, exc))
+                            if isinstance(exc, TimeoutError) and awaiting_response:
+                                with lock:
+                                    healthy_workers.add(threading.get_ident())
+                                    response_timeouts.append({"direction": "up", "error": f"{type(exc).__name__}: {exc}"})
+                            else:
+                                with lock:
+                                    healthy_workers.discard(threading.get_ident())
+                                record_error("{}: {}".format(type(exc).__name__, exc))
                         if conn is not None:
                             with lock:
                                 active.discard(conn)
@@ -1319,10 +1344,6 @@ class PerformanceTester:
                     rate = (cur - last_b) * 8 / ((now - last_t) * 1e6) if now > last_t else 0
                     if live_cb:
                         live_cb(round(now, 1), round(rate, 1))
-                    if now >= 0.4 and now < duration - 1 and rate > 100 and worker_count < 6:
-                        count = min(6 - worker_count, 3 if worker_count == 1 else 2)
-                        futures.extend(pool.submit(worker) for _ in range(count))
-                        worker_count += count
                     last_t, last_b = now, cur
                     if now >= duration or all(f.done() for f in futures):
                         break
@@ -1338,11 +1359,13 @@ class PerformanceTester:
             pool.shutdown(wait=True)
 
         stats = self._summarize_upload(series, warm)
-        valid = bool(healthy_workers) and series[-1][1] > 0
+        valid = bool(healthy_workers) and series[-1][1] >= 2 * 1024 * 1024 and bool(stats["samples"])
         if not valid:
             stats.update(sustained_mbps=0.0, peak_mbps=0.0)
         stats.update(total_bytes=series[-1][1], duration_s=round(series[-1][0], 2),
-                     errors=errors, valid=valid, workers=worker_count,
+                     errors=errors + (response_timeouts if not valid else []), valid=valid,
+                     invalid_reason=None if valid else "Upload payload or endpoint validation insufficient",
+                     workers=worker_count, chunk_size=chunk_size, post_body_size=post_body_size,
                      completed_requests=state["accepted"])
         loaded = round(statistics.median(loaded_rtts), 2) if loaded_rtts else None
         return stats, loaded
